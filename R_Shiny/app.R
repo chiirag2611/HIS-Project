@@ -1,9 +1,42 @@
+# Function to check and install required packages
+check_and_install_packages <- function(packages) {
+  missing_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+  if(length(missing_packages) > 0) {
+    message("Installing missing packages: ", paste(missing_packages, collapse=", "))
+    install.packages(missing_packages, dependencies=TRUE)
+  }
+}
+
+# List of required packages
+required_packages <- c("shiny", "shinydashboard", "shinyjs", "readxl", "DT", "plotly", 
+                      "ROSE", "caret", "smotefamily", "reactable", "shinyjqui", 
+                      "shinycssloaders", "bslib")
+
+# Check and install missing packages
+check_and_install_packages(required_packages)
+
+# Load required packages
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
+library(readxl)  
+library(DT)
+library(plotly)
+library(ROSE)
+library(caret)
+library(smotefamily)
+library(reactable)
+library(shinyjqui)
+library(shinycssloaders)
+library(bslib)
 
 # Static credentials
-credentials <- list(user = "1234", password = "HIS")
+credentials <- list(user = "HIS", password = "1234")
+
+# Create www directory if it doesn't exist
+if (!dir.exists("www")) {
+  dir.create("www")
+}
 
 # Enhanced Login UI
 login_ui <- fluidPage(
@@ -34,9 +67,30 @@ login_ui <- fluidPage(
         font-size: 14px;
         color: red;
       }
-    "))
+      .login-logo {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .login-logo img {
+        max-width: 150px;
+        height: auto;
+      }
+      
+    ")),
+    tags$script('
+      $(document).on("keyup", function(e) {
+        if(e.keyCode == 13) {
+          if($("#user").is(":focus") || $("#password").is(":focus")) {
+            $("#login_btn").click();
+          }
+        }
+      });
+    ')
   ),
   div(class = "login-box",
+      div(class = "login-logo", 
+      tags$img(src = "logo.png", alt = "Logo")
+      ),
       div(class = "login-title", "🔐 Secure Login"),
       textInput("user", "Username", placeholder = "Enter username"),
       passwordInput("password", "Password", placeholder = "Enter password"),
@@ -45,9 +99,28 @@ login_ui <- fluidPage(
   )
 )
 
-# Load actual UI & server from source files
-source("R/ui.R", local = TRUE)
-source("R/server.R", local = TRUE)
+# Add a function to check if source files exist
+check_source_files <- function() {
+  ui_file <- "R/ui.R"
+  server_file <- "R/server.R"
+  
+  if (!file.exists(ui_file)) {
+    stop("UI file not found: ", ui_file)
+  }
+  
+  if (!file.exists(server_file)) {
+    stop("Server file not found: ", server_file)
+  }
+  
+  return(TRUE)
+}
+
+# Check if source files exist before loading them
+if(check_source_files()) {
+  # Load actual UI & server from source files
+  source("R/ui.R", local = TRUE)
+  source("R/server.R", local = TRUE)
+}
 
 # Full app logic
 ui_combined <- function() {
@@ -57,6 +130,7 @@ ui_combined <- function() {
 server_combined <- function(input, output, session) {
   user_authenticated <- reactiveVal(FALSE)
   
+  # Login handler
   observeEvent(input$login_btn, {
     if (input$user == credentials$user && input$password == credentials$password) {
       shinyjs::hide("login_error")
@@ -64,6 +138,12 @@ server_combined <- function(input, output, session) {
     } else {
       shinyjs::show("login_error")
     }
+  })
+  
+  # Logout handler
+  observeEvent(input$logout_btn, {
+    user_authenticated(FALSE)
+    session$reload()  # This will refresh the app, clearing any state
   })
   
   output$app_ui <- renderUI({

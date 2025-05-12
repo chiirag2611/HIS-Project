@@ -8,12 +8,23 @@ library(shinyjs)
 library(shinyjqui)
 
 ui <- dashboardPage(
-  dashboardHeader(title = "Data Pre-Processing for Machine Learning", titleWidth = 500),
+  dashboardHeader(title = "Data Pre-Processing for Machine Learning", titleWidth = 500,
+    tags$li(
+      class = "dropdown",
+      actionButton(
+        "logout_btn", 
+        "Logout", 
+        icon = icon("sign-out-alt"),
+        style = "color: #fff; background-color: transparent; border: none; margin-top: 8px;"
+      )
+    )
+  ),
   
   dashboardSidebar(
     width = 200,
     sidebarMenu(
-      menuItem("Load Data", tabName = "load_data", icon = icon("file-upload", lib = "font-awesome"))
+      menuItem("Load Data", tabName = "load_data", icon = icon("file-upload", lib = "font-awesome")),
+      menuItem("PreProcessing", tabName = "preprocessing", icon = icon("cogs"))
     )
   ),
   
@@ -79,6 +90,7 @@ ui <- dashboardPage(
     ),
     useShinyjs(),
     tabItems(
+      # First tab item
       tabItem(
         tabName = "load_data",
         fluidRow(
@@ -118,11 +130,18 @@ ui <- dashboardPage(
         ),
         fluidRow(
           box(
-            title = "Drop Feature",
+              title = "Drop Feature",
+              solidHeader = TRUE,
+              width = 6,
+              uiOutput("drop_feature_ui"),
+              actionButton("apply_drop", "Delete")
+            ),    
+          box(
+            title = "Add Feature",
             solidHeader = TRUE,
-            width = 12,
-            uiOutput("drop_feature_ui"),
-            actionButton("apply_drop", "Delete")
+            width = 6,
+            uiOutput("add_feature_ui"),
+            actionButton("apply_add", "Insert")
           )
         ),
         fluidRow(
@@ -130,15 +149,60 @@ ui <- dashboardPage(
             title = "Convert Numerical to Categorical",
             solidHeader = TRUE,
             width = 6,
-            selectInput("num_to_cat", "Select Numerical Variables:", choices = NULL, multiple = TRUE),
+            selectInput("num_to_cat", "Select Numerical Variables:", 
+            choices = NULL, multiple = TRUE),
             actionButton("apply_num_to_cat", "Convert to Categorical")
           ),
           box(
             title = "Convert Categorical to Numerical",
             solidHeader = TRUE,
             width = 6,
-            selectInput("cat_to_num", "Select Categorical Variables:", choices = NULL, multiple = TRUE),
+            selectInput("cat_to_num", "Select Categorical Variables:",
+             choices = NULL, multiple = TRUE),
             actionButton("apply_cat_to_num", "Convert to Numerical")
+          )
+        )
+      ),
+      
+      # Second tab item
+      tabItem(
+        tabName = "preprocessing",
+        fluidRow(
+          box(
+            title = "Handle Missing Values", 
+            solidHeader = TRUE, 
+            width = 6,
+            uiOutput("missing_var_ui"),
+            textOutput("missing_percent"),
+            uiOutput("missing_method_ui"),
+            actionButton("apply_missing", "Apply")
+          ),
+          box(
+            title = "Handle Outliers", 
+            solidHeader = TRUE, 
+            width = 6,
+            uiOutput("outlier_var_ui"),
+            selectInput(
+              inputId = "outlier_method", 
+              label = "Select Outlier Handling Method:", 
+              choices = c("Remove Outliers", "Replace with Median", "Replace with Mean"), 
+              selected = "Remove Outliers"
+            ),
+            actionButton("apply_outliers", "Apply")
+          )
+        ),
+        # Add Save and Submit buttons
+        fluidRow(
+          column(
+            width = 12,
+            div(
+              style = "text-align: center; margin-top: 20px; margin-bottom: 30px;",
+              actionButton("submit_data", "Submit", 
+                           style = "padding: 10px 20px; font-size: 18px; background-color: #A84058; color: white;"),
+              downloadButton("save_data", "Save", 
+                             class = "btn btn-secondary",
+                             style = "padding: 10px 20px; font-size: 18px; margin-left: 20px;")
+            )
           )
         )
       )

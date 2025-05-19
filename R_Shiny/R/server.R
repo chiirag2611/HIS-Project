@@ -70,8 +70,8 @@ server <- function(input, output, session) {
           title = "Select Excel Sheet",
           selectInput("sheet_select", "Choose a sheet:", choices = sheet_names, selected = sheet_names[1]),
           footer = tagList(
-            modalButton("Cancel"),
-            actionButton("confirm_sheet", "Load Selected Sheet")
+            actionButton("confirm_sheet", "Load Selected Sheet"),
+            modalButton("Cancel")
           )
         ))
       }
@@ -450,8 +450,8 @@ server <- function(input, output, session) {
     selectInput(
       inputId = "missing_method",
       label = "Select Method to Handle Missing Values:",
-      choices = c("Suppression", "Replace with Mode", "Replace with Median", "Replace with Mean"),
-      selected = "Suppression"
+      choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
+      selected = "Row Deletion"
     )
   })
   
@@ -465,22 +465,22 @@ server <- function(input, output, session) {
       missing_count <- sum(is.na(displayed[[var]]))
       
       if (missing_count > 0) {
-        if (input$missing_method == "Suppression") {
+        if (input$missing_method == "Row Deletion") {
           rows_to_keep <- !is.na(displayed[[var]])
           displayed <- displayed[rows_to_keep, ]
           train <- train[rows_to_keep, ]
           
-        } else if (input$missing_method == "Replace with Mode") {
+        } else if (input$missing_method == "Handle using Mode") {
           mode_val <- as.numeric(names(sort(table(displayed[[var]]), decreasing = TRUE)[1]))
           displayed[[var]][is.na(displayed[[var]])] <- mode_val
           train[[var]][is.na(train[[var]])] <- mode_val
           
-        } else if (input$missing_method == "Replace with Median") {
+        } else if (input$missing_method == "Handle using Median") {
           median_val <- median(displayed[[var]], na.rm = TRUE)
           displayed[[var]][is.na(displayed[[var]])] <- median_val
           train[[var]][is.na(train[[var]])] <- median_val
           
-        } else if (input$missing_method == "Replace with Mean") {
+        } else if (input$missing_method == "Handle using Mean") {
           mean_val <- mean(displayed[[var]], na.rm = TRUE)
           displayed[[var]][is.na(displayed[[var]])] <- mean_val
           train[[var]][is.na(train[[var]])] <- mean_val
@@ -493,7 +493,7 @@ server <- function(input, output, session) {
           modalDialog(
             title = "Missing Values Handled",
             paste("The variable", var, "had", missing_count, "missing values."),
-            if (input$missing_method == "Suppression") {
+            if (input$missing_method == "Row Deletion") {
               paste(missing_count, "rows were removed.")
             } else {
               "The missing values have been replaced."

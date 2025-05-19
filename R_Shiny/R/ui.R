@@ -192,19 +192,19 @@ ui <- dashboardPage(
           )
         ),
         # Add Save and Submit buttons
-        fluidRow(
-          column(
-            width = 12,
-            div(
-              style = "text-align: center; margin-top: 20px; margin-bottom: 30px;",
-              actionButton("submit_data", "Submit", 
-                           style = "padding: 10px 20px; font-size: 18px; background-color: #A84058; color: white;"),
-              downloadButton("save_data", "Save", 
-                             class = "btn btn-secondary",
-                             style = "padding: 10px 20px; font-size: 18px; margin-left: 20px;")
-            )
-          )
-        )
+        #fluidRow(
+        #  column(
+        #    width = 12,
+        #    div(
+        #      style = "text-align: center; margin-top: 20px; margin-bottom: 30px;",
+        #      actionButton("submit_data", "Submit", 
+        #                   style = "padding: 10px 20px; font-size: 18px; background-color: #A84058; color: white;"),
+        #      downloadButton("save_data", "Save", 
+        #                     class = "btn btn-secondary",
+        #                     style = "padding: 10px 20px; font-size: 18px; margin-left: 20px;")
+        #    )
+        #  )
+        #)
       )
     )
   )

@@ -159,6 +159,32 @@ server <- function(input, output, session) {
   
   ## Data exploration
   
+  # Dynamic UI to show column checklist after data upload
+  output$column_selector_ui <- renderUI({
+    req(display_data())
+    checkboxGroupInput("selected_columns", "Choose Columns for Analysis:", 
+                       choices = names(display_data()), 
+                       selected = if (input$select_all_columns) names(display_data()) else NULL)
+  })
+  
+  # Automatically update selections when 'Select All' is toggled
+  observeEvent(input$select_all_columns, {
+    req(display_data())
+    if (input$select_all_columns) {
+      updateCheckboxGroupInput(session, "selected_columns", selected = names(display_data()))
+    } else {
+      updateCheckboxGroupInput(session, "selected_columns", selected = character(0))
+    }
+  })
+  
+  # Apply column selection to filter display data only
+  observeEvent(input$apply_column_filter, {
+    req(training_data(), input$selected_columns)
+    selected <- input$selected_columns
+    display_data(training_data()[, selected, drop = FALSE])
+  })
+  
+  
   # Render the dataset in the "Show Data" tab
   output$table <- renderDT({
     req(display_data())  # Ensure data is available
@@ -589,5 +615,5 @@ server <- function(input, output, session) {
       showNotification("Selected variable is not numeric.", type = "error")
     }
   })
-
+  
 } # End of server function

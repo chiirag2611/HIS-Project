@@ -109,6 +109,17 @@ ui <- dashboardPage(
             verbatimTextOutput("fileDetails")
           )
         ),
+        # NEW COLUMN SELECTOR SECTION
+        fluidRow(
+          box(
+            title = "Column Selector",
+            solidHeader = TRUE,
+            width = 12,
+            checkboxInput("select_all_columns", "Select All Columns", value = TRUE),
+            uiOutput("column_selector_ui"),
+            actionButton("apply_column_filter", "Apply Selection")
+          )
+        ),
         fluidRow(
           box(
             title = "Data Exploration",

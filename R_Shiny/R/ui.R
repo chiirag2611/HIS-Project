@@ -115,9 +115,55 @@ ui <- dashboardPage(
             title = "Column Selector",
             solidHeader = TRUE,
             width = 12,
-            checkboxInput("select_all_columns", "Select All Columns", value = TRUE),
-            uiOutput("column_selector_ui"),
-            actionButton("apply_column_filter", "Apply Selection")
+            fluidRow(
+              column(
+                width = 3,
+                h4("Quick Actions"),
+                div(
+                  style = "margin-bottom: 15px;",
+                  actionButton("select_all_cols", "Select All", class = "btn-sm btn-action"),
+                  actionButton("deselect_all_cols", "Deselect All", class = "btn-sm btn-action")
+                ),
+                div(
+                  style = "margin-bottom: 15px;",
+                  actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"),
+                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action")
+                ),
+                h4("First/Last Columns"),
+                div(
+                  style = "margin-bottom: 15px;",
+                  numericInput("first_n_cols", "Select First N Columns:", value = 10, min = 1, max = 1000),
+                  actionButton("apply_first_n", "Apply", class = "btn-sm btn-action")
+                ),
+                div(
+                  style = "margin-bottom: 15px;",
+                  numericInput("last_n_cols", "Select Last N Columns:", value = 10, min = 1, max = 1000),
+                  actionButton("apply_last_n", "Apply", class = "btn-sm btn-action")
+                ),
+                h4("Range Selection"),
+                div(
+                  style = "margin-bottom: 15px;",
+                  uiOutput("range_slider_ui"),
+                  actionButton("apply_range", "Apply Range", class = "btn-sm btn-action")
+                )
+              ),
+              column(
+                width = 9,
+                h4("Column Selection"),
+                div(
+                  style = "margin-bottom: 15px;",
+                  textInput("search_columns", "Search Columns:", placeholder = "Type to search...")
+                ),
+                div(
+                  style = "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;",
+                  uiOutput("column_selector_ui")
+                )
+              )
+            ),
+            div(
+              style = "margin-top: 15px; text-align: right;",
+              actionButton("apply_column_filter", "Apply Selection", class = "btn-primary")
+            )
           )
         ),
         fluidRow(

@@ -159,29 +159,211 @@ server <- function(input, output, session) {
   
   ## Data exploration
   
-  # Dynamic UI to show column checklist after data upload
-  output$column_selector_ui <- renderUI({
-    req(display_data())
-    checkboxGroupInput("selected_columns", "Choose Columns for Analysis:", 
-                       choices = names(display_data()), 
-                       selected = if (input$select_all_columns) names(display_data()) else NULL)
-  })
-  
-  # Automatically update selections when 'Select All' is toggled
-  observeEvent(input$select_all_columns, {
-    req(display_data())
-    if (input$select_all_columns) {
-      updateCheckboxGroupInput(session, "selected_columns", selected = names(display_data()))
-    } else {
-      updateCheckboxGroupInput(session, "selected_columns", selected = character(0))
+  # Safe reactive accessor function to avoid errors
+  safe_get_display_data <- function() {
+    if (is.null(display_data())) {
+      return(NULL)
+    }
+    return(display_data())
+  }
+
+  # Initialize column selection state
+  column_selection <- reactiveVal(NULL)
+
+  # Update column selection when data changes
+  observe({
+    df <- safe_get_display_data()
+    if (!is.null(df)) {
+      selection <- setNames(rep(TRUE, ncol(df)), names(df))
+      column_selection(selection)
     }
   })
-  
-  # Apply column selection to filter display data only
+
+  # Generate range slider UI based on the number of columns
+  output$range_slider_ui <- renderUI({
+    df <- safe_get_display_data()
+    req(df)
+    num_cols <- ncol(df)
+    sliderInput("col_range", "Column Range:", min = 1, max = num_cols, value = c(1, min(50, num_cols)), step = 1)
+  })
+
+  # Generate column selection checkboxes organized in groups
+  output$column_selector_ui <- renderUI({
+    df <- safe_get_display_data()
+    req(df)
+    col_names <- names(df)
+    
+    # Filter columns based on search term if any
+    if (!is.null(input$search_columns) && input$search_columns != "") {
+      search_term <- tolower(input$search_columns)
+      col_names <- col_names[grepl(search_term, tolower(col_names))]
+    }
+    
+    if (length(col_names) == 0) {
+      return(tags$div("No columns match your search criteria"))
+    }
+    
+    selection <- column_selection()
+    
+    # Create checkboxes in a more efficient way
+    checkbox_list <- lapply(col_names, function(col) {
+      is_numeric <- is.numeric(df[[col]])
+      type_label <- if(is_numeric) "numeric" else "categorical"
+      type_color <- if(is_numeric) "#007bff" else "#28a745"
+      
+      is_selected <- if (!is.null(selection)) selection[col] else TRUE
+      
+      div(
+        style = "margin-bottom: 5px;",
+        checkboxInput(
+          inputId = paste0("col_", make.names(col)),
+          label = tags$span(
+            col,
+            tags$span(
+              style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
+              paste0("(", type_label, ")")
+            )
+          ),
+          value = is_selected
+        )
+      )
+    })
+    
+    # Return the list of checkboxes
+    do.call(tagList, checkbox_list)
+  })
+
+  # Select all columns
+  observeEvent(input$select_all_cols, {
+    df <- safe_get_display_data()
+    req(df)
+    
+    selection <- column_selection()
+    if (!is.null(selection)) {
+      selection[] <- TRUE
+      column_selection(selection)
+    }
+  })
+
+  # Deselect all columns
+  observeEvent(input$deselect_all_cols, {
+    df <- safe_get_display_data()
+    req(df)
+    
+    selection <- column_selection()
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      column_selection(selection)
+    }
+  })
+
+  # Select numeric columns
+  observeEvent(input$select_numeric_cols, {
+    df <- safe_get_display_data()
+    req(df)
+    
+    selection <- column_selection()
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      for (col in names(df)) {
+        selection[col] <- is.numeric(df[[col]])
+      }
+      column_selection(selection)
+    }
+  })
+
+  # Select categorical columns
+  observeEvent(input$select_categorical_cols, {
+    df <- safe_get_display_data()
+    req(df)
+    
+    selection <- column_selection()
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      for (col in names(df)) {
+        selection[col] <- !is.numeric(df[[col]])
+      }
+      column_selection(selection)
+    }
+  })
+
+  # Select first N columns
+  observeEvent(input$apply_first_n, {
+    df <- safe_get_display_data()
+    req(df, input$first_n_cols)
+    
+    n <- min(input$first_n_cols, ncol(df))
+    selection <- column_selection()
+    
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      selection[names(df)[1:n]] <- TRUE
+      column_selection(selection)
+    }
+  })
+
+  # Select last N columns
+  observeEvent(input$apply_last_n, {
+    df <- safe_get_display_data()
+    req(df, input$last_n_cols)
+    
+    n <- min(input$last_n_cols, ncol(df))
+    total_cols <- ncol(df)
+    selection <- column_selection()
+    
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      selection[names(df)[(total_cols-n+1):total_cols]] <- TRUE
+      column_selection(selection)
+    }
+  })
+
+  # Apply range selection
+  observeEvent(input$apply_range, {
+    df <- safe_get_display_data()
+    req(df, input$col_range)
+    
+    range_start <- input$col_range[1]
+    range_end <- input$col_range[2]
+    selection <- column_selection()
+    
+    if (!is.null(selection)) {
+      selection[] <- FALSE
+      selection[names(df)[range_start:range_end]] <- TRUE
+      column_selection(selection)
+    }
+  })
+
+  # Apply column filter when button is clicked
   observeEvent(input$apply_column_filter, {
-    req(training_data(), input$selected_columns)
-    selected <- input$selected_columns
-    display_data(training_data()[, selected, drop = FALSE])
+    df <- safe_get_display_data()
+    req(df, training_data())
+    
+    # Get current selection state from checkboxes (in case they were manually changed)
+    col_names <- names(df)
+    selected_cols <- c()
+    
+    for (col in col_names) {
+      checkbox_id <- paste0("col_", make.names(col))
+      if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
+        selected_cols <- c(selected_cols, col)
+      }
+    }
+    
+    if (length(selected_cols) == 0) {
+      showNotification("Please select at least one column", type = "warning")
+      return()
+    }
+    
+    # Apply the filter
+    tryCatch({
+      filtered_data <- training_data()[, selected_cols, drop = FALSE]
+      # Update the reactive data object with filtered data
+      display_data(filtered_data)
+      showNotification(paste("Selected", length(selected_cols), "columns"), type = "message")
+    }, error = function(e) {
+      showNotification(paste("Error:", e$message), type = "error")
+    })
   })
   
   

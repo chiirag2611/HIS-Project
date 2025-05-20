@@ -126,8 +126,8 @@ ui <- dashboardPage(
                 ),
                 div(
                   style = "margin-bottom: 15px;",
-                  actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"),
-                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action")
+                  actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"), # nolint
+                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action") # nolint
                 ),
                 h4("First/Last Columns"),
                 div(
@@ -248,20 +248,61 @@ ui <- dashboardPage(
             actionButton("apply_outliers", "Apply")
           )
         ),
-        # Add Save and Submit buttons
-        #fluidRow(
-        #  column(
-        #    width = 12,
-        #    div(
-        #      style = "text-align: center; margin-top: 20px; margin-bottom: 30px;",
-        #      actionButton("submit_data", "Submit", 
-        #                   style = "padding: 10px 20px; font-size: 18px; background-color: #A84058; color: white;"),
-        #      downloadButton("save_data", "Save", 
-        #                     class = "btn btn-secondary",
-        #                     style = "padding: 10px 20px; font-size: 18px; margin-left: 20px;")
-        #    )
-        #  )
-        #)
+        fluidRow(
+          box(
+            title = "Data Transformation",
+            solidHeader = TRUE,
+            width = 6,
+            uiOutput("transform_var_ui"),
+            selectInput(
+              inputId = "transformation_method",
+              label = "Select Transformation Method:",
+              choices = c("Min-Max Scaling", "Z-Score Normalization", "Log Transformation"),
+              selected = "Min-Max Scaling"
+            ),
+            div(
+              style = "display: flex; align-items: center; gap: 10px;",
+              actionButton("apply_transformation", "Apply"),
+              tags$span(
+                "⚠️ Be cautious when applying transformations to the target variable; only Log Transformation allows recovery of original values.",
+                style = "color: orange; font-size: 12px;"
+              )
+            )
+          ),
+          box(
+            title = "Encoding Data",
+            solidHeader = TRUE,
+            width = 6,
+            uiOutput("encoding_var_ui"),
+            selectInput(
+              inputId = "encoding_method",
+              label = "Select Encoding Method:",
+              choices = c("Label Encoding", "One-Hot Encoding"),
+              selected = "Label Encoding"
+            ),
+            div(
+              style = "display: flex; align-items: center;",  # Align button and message in the same line
+              actionButton("apply_encoding", "Apply"),
+              #tags$span(
+                #"❗ Avoid applying One-Hot Encoding to the target variable.",
+                #style = "color: red; margin-left: 10px;"  # Add spacing and red color
+              #)
+            )
+          )
+        ),
+        fluidRow(
+          column(
+            width = 12,
+            div(
+              style = "text-align: center; margin-top: 20px; margin-bottom: 30px;",
+              actionButton("submit_data", "Submit", 
+                           style = "padding: 10px 20px; font-size: 18px; background-color: #A84058; color: white;"),
+              downloadButton("save_data", "Save", 
+                             class = "btn btn-secondary shiny-disabled",
+                             style = "padding: 10px 20px; font-size: 18px; margin-left: 20px;")
+            )
+          )
+        )
       )
     )
   )

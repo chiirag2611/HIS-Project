@@ -797,5 +797,273 @@ server <- function(input, output, session) {
       showNotification("Selected variable is not numeric.", type = "error")
     }
   })
+  ## Data Transformation
   
+  # Dynamically selecting Data Transformation
+  output$transform_var_ui <- renderUI({
+    req(display_data())
+    
+    data <- display_data()
+    # Dynamically identify numerical columns excluding derived columns
+    numeric_vars <- names(data)[sapply(data, is.numeric)]
+    
+    selectizeInput(
+      inputId = "transform_var",
+      label = "Select Numerical Variables for Transformation:",
+      choices = numeric_vars,
+      selected = NULL, # No variable selected by default
+      multiple = TRUE
+    )
+  })
+  
+  observeEvent(input$apply_transformation, {
+    req(training_data())
+    req(input$transform_var)
+    req(input$transformation_method)
+    
+    # Get the training data and selected variables
+    data <- training_data()
+    selected_vars <- input$transform_var
+    transformed_vars <- list()
+    
+    for (var in selected_vars) {
+      if (input$transformation_method == "Min-Max Scaling") {
+        data[[var]] <- (data[[var]] - min(data[[var]], na.rm = TRUE)) / 
+          (max(data[[var]], na.rm = TRUE) - min(data[[var]], na.rm = TRUE))
+        transformed_vars[[var]] <- "Min-Max Scaling"
+      } else if (input$transformation_method == "Z-Score Normalization") {
+        data[[var]] <- scale(data[[var]], center = TRUE, scale = TRUE)
+        transformed_vars[[var]] <- "Z-Score Normalization"
+      } else if (input$transformation_method == "Log Transformation") {
+        data[[var]] <- log(data[[var]] + 1) # Adding 1 to handle zero values
+        transformed_vars[[var]] <- "Log Transformation"
+      }
+    }
+    
+    # Update the dataset with the transformations
+    training_data(data) 
+    
+    # Show notification
+    showNotification("Transformation applied successfully!", type = "message")
+    
+    # Prepare the transformation message
+    if (length(transformed_vars) == 1) {
+      var_list <- paste(names(transformed_vars), collapse = ", ")
+      transformation_msg <- paste(input$transformation_method, "applied in the following variable:", var_list)
+    } else {
+      var_list <- paste(names(transformed_vars), collapse = ", ")
+      transformation_msg <- paste(input$transformation_method, "applied in the following variables:", var_list)
+    }
+    
+    # Show modal dialog with applied transformations
+    showModal(
+      modalDialog(
+        title = "Transformation Applied",
+        transformation_msg,
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      )
+    )
+  })
+  
+  ## Data Encoding 
+  
+  # Data Encoding Variable Selection
+  output$encoding_var_ui <- renderUI({
+    req(display_data())
+    
+    data <- display_data()
+    # Dynamically identify categorical columns in the current dataset
+    categorical_vars <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
+    
+    selectizeInput(
+      inputId = "encoding_var",
+      label = "Select Categorical Variables for Encoding:",
+      choices = categorical_vars,
+      selected = NULL, # No variable selected by default
+      multiple = TRUE
+    )
+  })
+  
+  # Observer for applying encoding
+  observeEvent(input$apply_encoding, {
+    req(training_data())
+    req(input$encoding_var)
+    req(input$encoding_method)
+    
+    # Get the training data and selected variables
+    data <- training_data()
+    selected_vars <- input$encoding_var
+    encoded_vars <- list()
+    
+    for (var in selected_vars) {
+      if (input$encoding_method == "Label Encoding") {
+        data[[var]] <- as.integer(as.factor(data[[var]]))
+        encoded_vars[[var]] <- "Label Encoding"
+      } else if (input$encoding_method == "One-Hot Encoding") {
+        one_hot <- model.matrix(~ . - 1, data.frame(data[[var]]))
+        colnames(one_hot) <- paste(var, colnames(one_hot), sep = "_")
+        data <- cbind(data, one_hot)
+        data[[var]] <- NULL
+        encoded_vars[[var]] <- "One-Hot Encoding"
+      }
+    }
+    
+    # Update the dataset with the encoding applied
+    training_data(data)
+    
+    # Show notification
+    showNotification("Encoding applied successfully!", type = "message")
+    
+    # Prepare the encoding message
+    if (length(encoded_vars) == 1) {
+      var_list <- paste(names(encoded_vars), collapse = ", ")
+      encoding_msg <- paste(encoded_vars[[1]], "applied in the following variable:", var_list)
+    } else {
+      var_list <- paste(names(encoded_vars), collapse = ", ")
+      encoding_msg <- paste(encoded_vars[[1]], "applied in the following variables:", var_list)
+    }
+    
+    # Show modal dialog with encoded variables
+    showModal(
+      modalDialog(
+        title = "Encoding Applied",
+        encoding_msg,
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      )
+    )
+  })
+  
+  ## Submit button 
+  
+  observeEvent(input$submit_data, {
+    # Retrieve the current state of training_data and display_data
+    req(training_data(), display_data())  # Ensure both datasets are available
+    training <- training_data()
+    display <- display_data()
+    
+    # Initialize messages for dialog box
+    alert_messages <- c()  # For alerts
+    warning_message <- "⚠️ Once you submit, further preprocessing will be locked and cannot be changed."
+    
+    # Check for categorical variables in training_data
+    if (any(sapply(training, function(col) is.factor(col) || is.character(col)))) {
+      alert_messages <- c(
+        alert_messages, 
+        "❗ The training data contains categorical variables. Label encoding will be automatically applied to these variables before training."
+      )
+    }
+    
+    # Check if the features in training_data differ from those in display_data
+    if (ncol(training) != ncol(display)) {
+      alert_messages <- c(
+        alert_messages,
+        "❗ The interface cannot handle a target variable that has been one-hot encoded. Please ensure the target variable is not encoded in this way."
+      )
+    }
+    
+    # Check for missing values in training_data
+    if (any(is.na(training))) {
+      alert_messages <- c(
+        alert_messages,
+        "❗ The training data contains missing values. If you don't handle them, all rows with null values will be removed automatically before training."
+      )
+    }
+    
+    # Prepare dialog box content
+    dialog_content <- tagList(
+      tags$h4("Alerts:", style = "color: red;"),  # Header for alert messages
+      lapply(alert_messages, function(msg) tags$p(msg)),
+      tags$hr(),
+      tags$h4("Warning:", style = "color: orange;"),  # Header for the warning message
+      tags$p(warning_message)
+    )
+    
+    # Show modal dialog with confirm and cancel options
+    showModal(
+      modalDialog(
+        title = "Submission Confirmation",
+        dialog_content,
+        easyClose = FALSE,  # Prevent closing without user action
+        footer = tagList(
+          actionButton("confirm_submit", "Confirm", icon = icon("check-circle")),
+          modalButton("Cancel", icon = icon("times-circle"))
+        )
+      )
+    )
+  })
+  
+  
+  # Handle Confirm and Cancel actions
+  observeEvent(input$confirm_submit, {
+    # Disable all preprocessing components
+    shinyjs::disable("missing_values_section")
+    shinyjs::disable("outliers_section")
+    shinyjs::disable("transformation_section")
+    shinyjs::disable("encoding_section")
+    shinyjs::disable("submit_button")
+    
+    # Proceed to finalize the submission
+    complete_submission()
+    
+    # Close the modal dialog
+    removeModal()
+  })
+  
+  observeEvent(input$cancel, {
+    # Close the modal dialog without taking further action
+    removeModal()
+  })
+  
+  
+  # Observe Confirm button click
+  observeEvent(input$confirm_submit, {
+    # Proceed with submission
+    complete_submission()
+  })
+  
+  # Define a function to handle submission
+  complete_submission <- function() {
+    # Disable all components
+    shinyjs::disable("missing_var")
+    shinyjs::disable("missing_method")
+    shinyjs::disable("apply_missing")
+    shinyjs::disable("outlier_var")
+    shinyjs::disable("outlier_method")
+    shinyjs::disable("apply_outliers")
+    shinyjs::disable("transform_var")
+    shinyjs::disable("transformation_method")
+    shinyjs::disable("apply_transformation")
+    shinyjs::disable("encoding_var")
+    shinyjs::disable("encoding_method")
+    shinyjs::disable("apply_encoding")
+    shinyjs::disable("submit_data")
+    save_variable("confirmed")
+  }
+  
+  ## Save Button 
+  
+  # Enable the Save button only when Submit is clicked
+  observe({
+    toggleState("save_data", !is.null(save_variable()))
+  })
+  
+  # Save data as CSV on Save button click
+  output$save_data <- downloadHandler(
+    filename = function() {
+      paste("training_data_", Sys.Date(), ".csv", sep = "")
+    },
+    content = function(file) {
+      req(training_data())  # Ensure data exists
+      write.csv(training_data(), file, row.names = FALSE)
+    }
+  )
+  ## Show training data 
+  
+  # Render the training Dataset
+  output$table_training <- renderDT({
+    req(display_data())  # Ensure data is available
+    datatable(training_data(), options = list(scrollX = TRUE))
+  })
 } # End of server function

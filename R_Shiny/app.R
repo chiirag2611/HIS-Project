@@ -214,9 +214,10 @@ server_combined <- function(input, output, session) {
     if (user_authenticated()) {
       if(check_source_files()) {
         # Load actual UI & server from source files
-        source("R/ui.R", local = TRUE)
+        ui_env <- new.env()
+        source("R/ui.R", local = ui_env)
         source("R/server.R", local = TRUE)
-        return(ui)
+        return(ui_env$ui)
       } else {
         return(tags$div("Error loading application UI"))
       }
@@ -228,9 +229,14 @@ server_combined <- function(input, output, session) {
   observe({
     if (user_authenticated()) {
       if(check_source_files()) {
-        # Load server logic
-        source("R/server.R", local = TRUE)
-        server(input, output, session)
+        # Load server logic and capture the server function
+        server_env <- new.env()
+        source("R/server.R", local = server_env)
+        if (exists("server", envir = server_env)) {
+          server_env$server(input, output, session)
+        } else {
+          showNotification("Error: server function not found in server.R", type = "error")
+        }
       }
     }
   })

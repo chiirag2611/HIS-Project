@@ -28,6 +28,9 @@ server <- function(input, output, session) {
   # Store previous selections to restore on cancel
   previous_selected_cols <- reactiveVal(character(0))
   
+  # Track if modal is currently open
+  modal_is_open <- reactiveVal(FALSE)
+  
   # Reactive data to store the uploaded data 
   training_data <- reactiveVal(NULL)
   display_data <- reactiveVal(NULL)
@@ -89,6 +92,9 @@ server <- function(input, output, session) {
       modal_selected_cols(character(0))  # Default to empty
     }
     
+    # Set modal state to open
+    modal_is_open(TRUE)
+    
     # Open modal and initialize checkbox states after it's rendered
     toggleModal(session, "columnSelectionModal", toggle = "open")
     
@@ -143,7 +149,82 @@ server <- function(input, output, session) {
     
     do.call(tagList, checkbox_list)
   })
-  
+    # Observer for individual checkbox changes in the modal
+  observe({
+    req(display_data())
+    df <- display_data()
+    
+    # Only run if modal is open
+    if (!modal_is_open()) return()
+    
+    # Collect all selected columns from checkboxes
+    selected <- c()
+    for (col in names(df)) {
+      checkbox_id <- paste0("modal_col_", make.names(col))
+      if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
+        selected <- c(selected, col)
+      }
+    }
+    
+    # Debug message for tracking selections
+    if (length(selected) > 0) {
+      message("Checkbox selections updated: ", paste(selected, collapse=", "))
+    }
+    
+    # Update the reactive value with current selections
+    modal_selected_cols(selected)
+  })
+  # Handle modal confirmation
+  observeEvent(input$modal_confirm, {
+    req(current_operation())
+    
+    # Get all selected columns from checkboxes
+    df <- display_data()
+    selected_cols <- c()
+    
+    # If we've explicitly deselected all, ensure the list is empty
+    if (length(modal_selected_cols()) == 0) {
+      selected_cols <- character(0)
+    } else {
+      # Otherwise, gather selected columns from checkboxes
+      for (col in names(df)) {
+        checkbox_id <- paste0("modal_col_", make.names(col))
+        if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
+          selected_cols <- c(selected_cols, col)
+        }
+      }
+    }
+    
+    # Save the confirmed selection
+    modal_selected_cols(selected_cols)
+    
+    # Set modal state to closed
+    modal_is_open(FALSE)
+    
+    # Debug message
+    message("Selected columns confirmed: ", paste(selected_cols, collapse=", "))
+    
+    # Update the appropriate input based on current operation
+    if (current_operation() == "missing") {
+      updateSelectInput(session, "missing_var", selected = selected_cols)
+    } 
+    else if (current_operation() == "outliers") {
+      updateSelectInput(session, "outlier_var", selected = selected_cols)
+    }
+    else if (current_operation() == "transformation") {
+      updateSelectInput(session, "transform_var", selected = selected_cols)
+    }
+    else if (current_operation() == "encoding") {
+      updateSelectInput(session, "encoding_var", selected = selected_cols)
+    }
+    
+    # Show notification
+    if (length(selected_cols) > 0) {
+      showNotification(paste("Selected", length(selected_cols), "columns"), type = "message")
+    }
+    
+    toggleModal(session, "columnSelectionModal", toggle = "close")
+  })
   # Modal quick actions
   observeEvent(input$modal_select_all, {
     df <- display_data()
@@ -183,52 +264,13 @@ server <- function(input, output, session) {
     # This will trigger a re-render of the modal_column_selector UI
     # with the updated search filter
   })
-  
-  # Handle modal confirmation
-  observeEvent(input$modal_confirm, {
-    req(current_operation())
-    
-    # Get all selected columns from checkboxes
-    df <- display_data()
-    selected_cols <- c()
-    
-    # If we've explicitly deselected all, ensure the list is empty
-    if (length(modal_selected_cols()) == 0) {
-      selected_cols <- character(0)
-    } else {
-      # Otherwise, gather selected columns from checkboxes
-      for (col in names(df)) {
-        checkbox_id <- paste0("modal_col_", make.names(col))
-        if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
-          selected_cols <- c(selected_cols, col)
-        }
-      }
-    }
-    
-    # Save the confirmed selection
-    modal_selected_cols(selected_cols)
-    
-    # Update the appropriate input based on current operation
-    if (current_operation() == "missing") {
-      updateSelectInput(session, "missing_var", selected = selected_cols)
-    } 
-    else if (current_operation() == "outliers") {
-      updateSelectInput(session, "outlier_var", selected = selected_cols)
-    }
-    else if (current_operation() == "transformation") {
-      updateSelectInput(session, "transform_var", selected = selected_cols)
-    }
-    else if (current_operation() == "encoding") {
-      updateSelectInput(session, "encoding_var", selected = selected_cols)
-    }
-    
-    toggleModal(session, "columnSelectionModal", toggle = "close")
-  })
-  
   # Handle modal cancel button
   observeEvent(input$modal_cancel, {
     # Restore previous selections to what they were before opening the modal
     modal_selected_cols(previous_selected_cols())
+    
+    # Set modal state to closed
+    modal_is_open(FALSE)
     
     # Make sure any UI inputs get restored to their previous state
     if (current_operation() == "missing") {

@@ -47,9 +47,10 @@ for (dir in required_dirs) {
   }
 }
 
-# Check for logo file and copy if missing
-if (file.exists("www/logo.png") && !file.exists("R_Shiny/www/logo.png")) {
-  file.copy("www/logo.png", "R_Shiny/www/logo.png")
+# Simply ensure the logo exists in the www directory
+if (!file.exists("www/logo.png")) {
+  # Handle the missing logo case if needed
+  warning("Logo file not found in www directory")
 }
 
 # Enhanced Login UI

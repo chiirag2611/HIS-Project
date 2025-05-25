@@ -104,22 +104,6 @@ ui <- dashboardPage(
           border-left: 5px solid #4CAF50;
           padding-left: 10px;
         }
-        /* Progress indicators styling */
-        #preprocessing_progress .nav-pills > li {
-          border: 1px solid #ddd;
-        }
-        #preprocessing_progress .nav-pills > li.active > a {
-          background-color: #3399FF;
-          color: white;
-        }
-        #preprocessing_progress .nav-pills > li.completed > a {
-          background-color: #4CAF50;
-          color: white;
-        }
-        #preprocessing_progress .nav-pills > li > a {
-          border-radius: 0;
-          cursor: default;
-        }
         @media (max-width: 768px) {
           .box {
             width: 100% !important;
@@ -138,12 +122,6 @@ ui <- dashboardPage(
         }
         $(function() { 
           $("[data-toggle=\'tooltip\']").tooltip();
-          
-          // Prevent navigation when clicking on progress indicators
-          $("#preprocessing_progress .nav-pills > li > a").on("click", function(e) {
-            e.preventDefault();
-            return false;
-          });
         });
       '))
     ),
@@ -283,18 +261,6 @@ ui <- dashboardPage(
       # Second tab item
       tabItem(
         tabName = "preprocessing",
-        # Progress Indicator
-        div(
-          id = "preprocessing_progress",
-          style = "margin-bottom: 20px;",
-          tags$ul(
-            class = "nav nav-pills nav-justified",
-            tags$li(class = "active", tags$a(href = "#", "1. Missing Values")),
-            tags$li(tags$a(href = "#", "2. Outliers")),
-            tags$li(tags$a(href = "#", "3. Transformation")),
-            tags$li(tags$a(href = "#", "4. Encoding"))
-          )
-        ),
         fluidRow(
           box(
             title = HTML("Handle Missing Values <span data-toggle='tooltip' title='Remove or replace missing values in your dataset' class='fa fa-question-circle'></span>"), 

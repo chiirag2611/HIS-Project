@@ -299,12 +299,6 @@ server <- function(input, output, session) {
             display_data(data)
             showNotification(paste("Data loaded successfully from sheet: '", sheet_names[1], "'", sep=""), type = "message")
             
-            # Reset progress indicators
-            shinyjs::runjs('
-              $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
-              $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
-            ')
-            
             # Reset operation-applied indicators
             removeClass(id = "missing_var_ui", class = "operation-applied")
             removeClass(id = "outlier_var_ui", class = "operation-applied")
@@ -332,12 +326,6 @@ server <- function(input, output, session) {
         training_data(data)
         display_data(data)
         showNotification("Data uploaded successfully!", type = "message")
-        
-        # Reset progress indicators
-        shinyjs::runjs('
-          $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
-          $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
-        ')
         
         # Reset operation-applied indicators
         removeClass(id = "missing_var_ui", class = "operation-applied")
@@ -380,12 +368,6 @@ server <- function(input, output, session) {
       training_data(data)
       display_data(data)
       showNotification(paste("Data from sheet '", input$sheet_select, "' loaded successfully!", sep=""), type = "message")
-      
-      # Reset progress indicators
-      shinyjs::runjs('
-        $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
-        $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
-      ')
       
       # Reset operation-applied indicators
       removeClass(id = "missing_var_ui", class = "operation-applied")
@@ -1686,38 +1668,6 @@ server <- function(input, output, session) {
       shinyjs::show("transformation_section")
       shinyjs::hide("show_transformation_button")
     }
-  })
-  
-  # Update progress indicators when operations are applied
-  observeEvent(input$apply_missing, {
-    # Get a reference to the first step's li element using jQuery
-    shinyjs::runjs('
-      $("#preprocessing_progress .nav-pills > li:nth-child(1)").removeClass("active").addClass("completed");
-      $("#preprocessing_progress .nav-pills > li:nth-child(2)").addClass("active");
-    ')
-  })
-  
-  observeEvent(input$apply_outliers, {
-    # Get a reference to the second step's li element using jQuery
-    shinyjs::runjs('
-      $("#preprocessing_progress .nav-pills > li:nth-child(2)").removeClass("active").addClass("completed");
-      $("#preprocessing_progress .nav-pills > li:nth-child(3)").addClass("active");
-    ')
-  })
-  
-  observeEvent(input$apply_transformation, {
-    # Get a reference to the third step's li element using jQuery
-    shinyjs::runjs('
-      $("#preprocessing_progress .nav-pills > li:nth-child(3)").removeClass("active").addClass("completed");
-      $("#preprocessing_progress .nav-pills > li:nth-child(4)").addClass("active");
-    ')
-  })
-  
-  observeEvent(input$apply_encoding, {
-    # Get a reference to the fourth step's li element using jQuery
-    shinyjs::runjs('
-      $("#preprocessing_progress .nav-pills > li:nth-child(4)").removeClass("active").addClass("completed");
-    ')
   })
   
   # Update preprocessing operations when applied

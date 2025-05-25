@@ -48,33 +48,47 @@ server <- function(input, output, session) {
     
     # If it's an Excel file, handle sheet selection
     if (file_ext %in% c("xlsx", "xls")) {
-      sheet_names <- excel_sheets(input$fileInput$datapath)
-      
-      # If there's only one sheet, load it directly
-      if (length(sheet_names) == 1) {
-        data <- tryCatch({
-          read_excel(input$fileInput$datapath, sheet = sheet_names[1])
-        }, error = function(e) {
-          showNotification(paste("Error loading sheet:", e$message), type = "error")
-          return(NULL)
-        })
+      tryCatch({
+        sheet_names <- excel_sheets(input$fileInput$datapath)
         
-        if (!is.null(data)) {
-          training_data(data)
-          display_data(data)
-          showNotification(paste("Data loaded successfully from sheet: '", sheet_names[1], "'", sep=""), type = "message")
+        if (length(sheet_names) == 0) {
+          showNotification("Excel file contains no sheets", type = "error")
+          return()
         }
-      } else {
-        # Use modal dialog to select a sheet only if multiple sheets exist
-        showModal(modalDialog(
-          title = "Select Excel Sheet",
-          selectInput("sheet_select", "Choose a sheet:", choices = sheet_names, selected = sheet_names[1]),
-          footer = tagList(
-            actionButton("confirm_sheet", "Load Selected Sheet"),
-            modalButton("Cancel")
-          )
-        ))
-      }
+        
+        # If there's only one sheet, load it directly
+        if (length(sheet_names) == 1) {
+          data <- tryCatch({
+            read_excel(input$fileInput$datapath, sheet = sheet_names[1])
+          }, error = function(e) {
+            showNotification(paste("Error loading sheet:", e$message), type = "error")
+            return(NULL)
+          })
+          
+          if (is.null(data) || ncol(data) == 0) {
+            showNotification("No data found in Excel sheet", type = "error")
+            return()
+          }
+          
+          if (!is.null(data)) {
+            training_data(data)
+            display_data(data)
+            showNotification(paste("Data loaded successfully from sheet: '", sheet_names[1], "'", sep=""), type = "message")
+          }
+        } else {
+          # Use modal dialog to select a sheet only if multiple sheets exist
+          showModal(modalDialog(
+            title = "Select Excel Sheet",
+            selectInput("sheet_select", "Choose a sheet:", choices = sheet_names, selected = sheet_names[1]),
+            footer = tagList(
+              actionButton("confirm_sheet", "Load Selected Sheet"),
+              modalButton("Cancel")
+            )
+          ))
+        }
+      }, error = function(e) {
+        showNotification(paste("Error loading Excel file:", e$message), type = "error")
+      })
     } else {
       # For non-Excel files, load directly
       data <- load_file_data(input$fileInput)
@@ -440,8 +454,20 @@ server <- function(input, output, session) {
     req(input$drop_feature)  # Ensure at least one feature is selected
     req(training_data())     # Ensure data is available
     
+    # Validation
+    if (ncol(training_data()) <= 2) {
+      showNotification("Cannot drop features: minimum of 2 columns required", type = "error")
+      return()
+    }
+    
     # Get the selected features to drop
     selected_features <- input$drop_feature
+    
+    # Validate selected features exist in data
+    if (!all(selected_features %in% names(training_data()))) {
+      showNotification("Some selected features do not exist in the data", type = "error")
+      return()
+    }
     
     # Store the dropped features and their data
     current_dropped <- dropped_features()
@@ -655,12 +681,27 @@ server <- function(input, output, session) {
   
   # Missing value handling logic
   output$missing_method_ui <- renderUI({
-    selectInput(
-      inputId = "missing_method",
-      label = "Select Method to Handle Missing Values:",
-      choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
-      selected = "Row Deletion"
-    )
+    req(input$missing_var, display_data())
+    var <- input$missing_var
+    data <- display_data()
+    
+    if (is.factor(data[[var]]) || is.character(data[[var]])) {
+      # For categorical variables
+      selectInput(
+        inputId = "missing_method",
+        label = "Select Method to Handle Missing Values:",
+        choices = c("Row Deletion", "Handle using Mode"),
+        selected = "Handle using Mode"
+      )
+    } else {
+      # For numerical variables
+      selectInput(
+        inputId = "missing_method",
+        label = "Select Method to Handle Missing Values:",
+        choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
+        selected = "Handle using Mean"
+      )
+    }
   })
   
   observeEvent(input$apply_missing, {
@@ -673,25 +714,51 @@ server <- function(input, output, session) {
       missing_count <- sum(is.na(displayed[[var]]))
       
       if (missing_count > 0) {
+        # Determine if the variable is categorical or numerical
+        is_categorical <- is.factor(displayed[[var]]) || is.character(displayed[[var]])
+        
         if (input$missing_method == "Row Deletion") {
           rows_to_keep <- !is.na(displayed[[var]])
           displayed <- displayed[rows_to_keep, ]
           train <- train[rows_to_keep, ]
           
         } else if (input$missing_method == "Handle using Mode") {
-          mode_val <- as.numeric(names(sort(table(displayed[[var]]), decreasing = TRUE)[1]))
+          # Mode works for both categorical and numerical data
+          if (is_categorical) {
+            # For categorical data, use the mode directly without conversion
+            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
+          } else {
+            # For numerical data, convert the mode to numeric
+            mode_val <- as.numeric(names(sort(table(displayed[[var]]), decreasing = TRUE)[1]))
+          }
           displayed[[var]][is.na(displayed[[var]])] <- mode_val
           train[[var]][is.na(train[[var]])] <- mode_val
           
         } else if (input$missing_method == "Handle using Median") {
-          median_val <- median(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][is.na(displayed[[var]])] <- median_val
-          train[[var]][is.na(train[[var]])] <- median_val
+          if (is_categorical) {
+            showNotification("Median method cannot be applied to categorical data. Using mode instead.", type = "warning")
+            # Fall back to mode for categorical data
+            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
+            displayed[[var]][is.na(displayed[[var]])] <- mode_val
+            train[[var]][is.na(train[[var]])] <- mode_val
+          } else {
+            median_val <- median(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][is.na(displayed[[var]])] <- median_val
+            train[[var]][is.na(train[[var]])] <- median_val
+          }
           
         } else if (input$missing_method == "Handle using Mean") {
-          mean_val <- mean(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][is.na(displayed[[var]])] <- mean_val
-          train[[var]][is.na(train[[var]])] <- mean_val
+          if (is_categorical) {
+            showNotification("Mean method cannot be applied to categorical data. Using mode instead.", type = "warning")
+            # Fall back to mode for categorical data
+            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
+            displayed[[var]][is.na(displayed[[var]])] <- mode_val
+            train[[var]][is.na(train[[var]])] <- mode_val
+          } else {
+            mean_val <- mean(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][is.na(displayed[[var]])] <- mean_val
+            train[[var]][is.na(train[[var]])] <- mean_val
+          }
         }
         
         display_data(displayed)
@@ -735,67 +802,104 @@ server <- function(input, output, session) {
     }
   })
   
+  # Create a function to ensure atomic updates
+  update_datasets <- function(new_display, new_training, session) {
+    tryCatch({
+      display_data(new_display)
+      training_data(new_training)
+      # Log the update for debugging
+      message(sprintf("Datasets updated: %d rows, %d columns", 
+                    nrow(new_display), ncol(new_display)))
+    }, error = function(e) {
+      showNotification(paste("Error updating datasets:", e$message), type = "error")
+    })
+  }
+
+  # Then use it in outlier handling
   observeEvent(input$apply_outliers, {
-    req(input$outlier_var, input$outlier_method, display_data(), training_data())
-    
-    # Retrieve both datasets
-    displayed <- display_data()
-    training <- training_data()
-    var <- input$outlier_var
-    
-    if (is.numeric(displayed[[var]])) {
-      # Detect outliers using the IQR method
-      iqr <- IQR(displayed[[var]], na.rm = TRUE)
-      q1 <- quantile(displayed[[var]], 0.25, na.rm = TRUE)
-      q3 <- quantile(displayed[[var]], 0.75, na.rm = TRUE)
-      lower_bound <- q1 - 1.5 * iqr
-      upper_bound <- q3 + 1.5 * iqr
+    tryCatch({
+      req(input$outlier_var, input$outlier_method, display_data(), training_data())
       
-      # Identify outliers
-      outliers <- which(displayed[[var]] < lower_bound | displayed[[var]] > upper_bound)
-      outlier_count <- length(outliers)
-      
-      if (outlier_count > 0) {
-        if (input$outlier_method == "Remove Outliers") {
-          # Remove outliers from both datasets
-          displayed <- displayed[-outliers, ]
-          training <- training[-outliers, ]
-        } else if (input$outlier_method == "Replace with Median") {
-          # Replace outliers with the median in both datasets
-          median_val <- median(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][outliers] <- median_val
-          training[[var]][outliers] <- median_val
-        } else if (input$outlier_method == "Replace with Mean") {
-          # Replace outliers with the mean in both datasets
-          mean_val <- mean(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][outliers] <- mean_val
-          training[[var]][outliers] <- mean_val
-        }
-        
-        # Update the reactive datasets
-        display_data(displayed)
-        training_data(training)
-        
-        # Show a modal message summarizing the changes
-        showModal(
-          modalDialog(
-            title = "Outliers Handled",
-            paste("The variable", var, "had", outlier_count, "outliers detected."),
-            if (input$outlier_method == "Remove Outliers") {
-              paste(outlier_count, "rows were removed.")
-            } else {
-              "The outliers have been replaced."
-            },
-            easyClose = TRUE,
-            footer = modalButton("Close")
-          )
-        )
-      } else {
-        showNotification("No outliers detected in the selected variable.", type = "warning")
+      # Check if variable exists
+      if (!input$outlier_var %in% names(display_data())) {
+        showNotification("Selected variable no longer exists in dataset", type = "error")
+        return()
       }
-    } else {
-      showNotification("Selected variable is not numeric.", type = "error")
-    }
+      
+      # Check for sufficient data
+      if (sum(!is.na(display_data()[[input$outlier_var]])) < 4) {
+        showNotification("Not enough data points for outlier detection", type = "warning")
+        return()
+      }
+      
+      # Ensure variable is numeric before processing
+      if (!is.numeric(display_data()[[input$outlier_var]])) {
+        showNotification("Selected variable must be numeric for outlier detection", type = "error")
+        return()
+      }
+      
+      # Retrieve both datasets
+      displayed <- display_data()
+      training <- training_data()
+      var <- input$outlier_var
+      
+      if (is.numeric(displayed[[var]])) {
+        # Detect outliers using the IQR method
+        iqr <- IQR(displayed[[var]], na.rm = TRUE)
+        q1 <- quantile(displayed[[var]], 0.25, na.rm = TRUE)
+        q3 <- quantile(displayed[[var]], 0.75, na.rm = TRUE)
+        lower_bound <- q1 - 1.5 * iqr
+        upper_bound <- q3 + 1.5 * iqr
+        
+        # Identify outliers
+        outliers <- which(displayed[[var]] < lower_bound | displayed[[var]] > upper_bound)
+        outlier_count <- length(outliers)
+        
+        if (outlier_count > 0) {
+          if (input$outlier_method == "Remove Outliers") {
+            # Remove outliers from both datasets
+            displayed <- displayed[-outliers, ]
+            training <- training[-outliers, ]
+          } else if (input$outlier_method == "Replace with Median") {
+            # Replace outliers with the median in both datasets
+            median_val <- median(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][outliers] <- median_val
+            training[[var]][outliers] <- median_val
+            update_datasets(displayed, training, session)
+          } else if (input$outlier_method == "Replace with Mean") {
+            # Replace outliers with the mean in both datasets
+            mean_val <- mean(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][outliers] <- mean_val
+            training[[var]][outliers] <- mean_val
+          }
+          
+          # Update the reactive datasets
+          display_data(displayed)
+          training_data(training)
+          
+          # Show a modal message summarizing the changes
+          showModal(
+            modalDialog(
+              title = "Outliers Handled",
+              paste("The variable", var, "had", outlier_count, "outliers detected."),
+              if (input$outlier_method == "Remove Outliers") {
+                paste(outlier_count, "rows were removed.")
+              } else {
+                "The outliers have been replaced."
+              },
+              easyClose = TRUE,
+              footer = modalButton("Close")
+            )
+          )
+        } else {
+          showNotification("No outliers detected in the selected variable.", type = "warning")
+        }
+      } else {
+        showNotification("Selected variable is not numeric.", type = "error")
+      }
+    }, error = function(e) {
+      showNotification(paste("Error in outlier detection:", e$message), type = "error")
+    })
   })
   ## Data Transformation
   
@@ -817,53 +921,54 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$apply_transformation, {
-    req(training_data())
-    req(input$transform_var)
-    req(input$transformation_method)
+    req(training_data(), input$transform_var, input$transformation_method)
     
-    # Get the training data and selected variables
-    data <- training_data()
-    selected_vars <- input$transform_var
-    transformed_vars <- list()
-    
-    for (var in selected_vars) {
+    withProgress(message = 'Applying transformations...', value = 0, {
+      # Create local copies
+      data <- isolate(training_data())
+      display <- isolate(display_data())
+      selected_vars <- input$transform_var
+      transformed_vars <- list()
+      
+      # Process variables in batches for efficiency
+      incProgress(0.2, detail = "Processing variables...")
+      
       if (input$transformation_method == "Min-Max Scaling") {
-        data[[var]] <- (data[[var]] - min(data[[var]], na.rm = TRUE)) / 
-          (max(data[[var]], na.rm = TRUE) - min(data[[var]], na.rm = TRUE))
-        transformed_vars[[var]] <- "Min-Max Scaling"
-      } else if (input$transformation_method == "Z-Score Normalization") {
-        data[[var]] <- scale(data[[var]], center = TRUE, scale = TRUE)
-        transformed_vars[[var]] <- "Z-Score Normalization"
-      } else if (input$transformation_method == "Log Transformation") {
-        data[[var]] <- log(data[[var]] + 1) # Adding 1 to handle zero values
-        transformed_vars[[var]] <- "Log Transformation"
+        # Vectorized approach
+        for (var in selected_vars) {
+          if (is.numeric(data[[var]])) {
+            min_val <- min(data[[var]], na.rm = TRUE)
+            max_val <- max(data[[var]], na.rm = TRUE)
+            
+            # Check for zero range to avoid division by zero
+            if (max_val - min_val > 0) {
+              data[[var]] <- (data[[var]] - min_val) / (max_val - min_val)
+              display[[var]] <- (display[[var]] - min_val) / (max_val - min_val)
+              transformed_vars[[var]] <- "Min-Max Scaling"
+            } else {
+              showNotification(paste("Skipping", var, "- all values are identical"), type = "warning")
+            }
+          } else {
+            showNotification(paste("Skipping", var, "- not numeric"), type = "warning")
+          }
+        }
       }
-    }
-    
-    # Update the dataset with the transformations
-    training_data(data) 
+      
+      incProgress(0.6, detail = "Updating datasets...")
+      
+      # Update both datasets atomically
+      training_data(data)
+      display_data(display)
+      
+      incProgress(1.0, detail = "Complete")
+    })
     
     # Show notification
-    showNotification("Transformation applied successfully!", type = "message")
-    
-    # Prepare the transformation message
-    if (length(transformed_vars) == 1) {
-      var_list <- paste(names(transformed_vars), collapse = ", ")
-      transformation_msg <- paste(input$transformation_method, "applied in the following variable:", var_list)
+    if (length(transformed_vars) > 0) {
+      showNotification("Transformation applied successfully!", type = "message")
     } else {
-      var_list <- paste(names(transformed_vars), collapse = ", ")
-      transformation_msg <- paste(input$transformation_method, "applied in the following variables:", var_list)
+      showNotification("No transformations were applied", type = "warning")
     }
-    
-    # Show modal dialog with applied transformations
-    showModal(
-      modalDialog(
-        title = "Transformation Applied",
-        transformation_msg,
-        easyClose = TRUE,
-        footer = modalButton("Close")
-      )
-    )
   })
   
   ## Data Encoding 
@@ -886,15 +991,30 @@ server <- function(input, output, session) {
   })
   
   # Observer for applying encoding
-  observeEvent(input$apply_encoding, {
-    req(training_data())
-    req(input$encoding_var)
-    req(input$encoding_method)
-    
+observeEvent(input$apply_encoding, {
+  req(training_data(), input$encoding_var, input$encoding_method)
+  
     # Get the training data and selected variables
     data <- training_data()
     selected_vars <- input$encoding_var
     encoded_vars <- list()
+
+    # Check if all selected variables exist and are categorical
+  invalid_vars <- c()
+  for (var in selected_vars) {
+    if (!var %in% names(data)) {
+      invalid_vars <- c(invalid_vars, paste(var, "(not found)"))
+    } else if (is.numeric(data[[var]])) {
+      invalid_vars <- c(invalid_vars, paste(var, "(numeric)"))
+    }
+  }
+  
+  if (length(invalid_vars) > 0) {
+    showNotification(paste("Invalid variables for encoding:", 
+                          paste(invalid_vars, collapse=", ")), 
+                    type = "error")
+    return()
+  }
     
     for (var in selected_vars) {
       if (input$encoding_method == "Label Encoding") {
@@ -933,6 +1053,9 @@ server <- function(input, output, session) {
         footer = modalButton("Close")
       )
     )
+    
+    # Force garbage collection to free memory
+    gc()
   })
   
   ## Submit button 
@@ -1065,5 +1188,38 @@ server <- function(input, output, session) {
   output$table_training <- renderDT({
     req(display_data())  # Ensure data is available
     datatable(training_data(), options = list(scrollX = TRUE))
+  })
+  
+  observe({
+    req(display_data())
+    # Check for inconsistencies in the display data
+    if(any(is.na(names(display_data())))) {
+      showNotification("Warning: Column names contain NA values", type = "warning")
+    }
+  })
+  
+  # Add a validation observer
+  observe({
+    req(display_data())
+    
+    # Check for common data issues
+    data <- display_data()
+    
+    # Look for NaN values which could indicate errors
+    if (any(sapply(data, function(x) any(is.nan(x), na.rm = TRUE)))) {
+      showNotification("Warning: Data contains NaN values which may indicate calculation errors", 
+                       type = "warning")
+    }
+    
+    # Check for infinite values
+    if (any(sapply(data, function(x) any(is.infinite(x), na.rm = TRUE)))) {
+      showNotification("Warning: Data contains infinite values", type = "warning")
+    }
+    
+    # Validate row counts remain consistent
+    if (!is.null(training_data()) && nrow(data) != nrow(training_data())) {
+      showNotification("Warning: Row count mismatch between display and training data", 
+                       type = "error")
+    }
   })
 } # End of server function

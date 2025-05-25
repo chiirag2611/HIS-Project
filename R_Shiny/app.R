@@ -3,7 +3,12 @@ check_and_install_packages <- function(packages) {
   missing_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
   if(length(missing_packages) > 0) {
     message("Installing missing packages: ", paste(missing_packages, collapse=", "))
-    install.packages(missing_packages, dependencies=TRUE)
+    tryCatch({
+      install.packages(missing_packages, dependencies=TRUE)
+    }, error = function(e) {
+      message("Error installing packages: ", e$message)
+      message("Please manually install these packages: ", paste(missing_packages, collapse=", "))
+    })
   }
 }
 
@@ -33,9 +38,18 @@ library(bslib)
 # Static credentials
 credentials <- list(user = "HIS", password = "1234")
 
-# Create www directory if it doesn't exist
-if (!dir.exists("www")) {
-  dir.create("www")
+# Ensure all required directories exist
+required_dirs <- c("www", "R")
+for (dir in required_dirs) {
+  if (!dir.exists(dir)) {
+    dir.create(dir)
+    cat(sprintf("Created directory: %s\n", dir))
+  }
+}
+
+# Check for logo file and copy if missing
+if (file.exists("www/logo.png") && !file.exists("R_Shiny/www/logo.png")) {
+  file.copy("www/logo.png", "R_Shiny/www/logo.png")
 }
 
 # Enhanced Login UI
@@ -85,6 +99,18 @@ login_ui <- fluidPage(
           }
         }
       });
+    '),
+    tags$script('
+      $(document).ready(function() {
+        $(document).on("keypress", function(e) {
+          if(e.which == 13 || e.keyCode == 13) {
+            if($("#user").is(":focus") || $("#password").is(":focus")) {
+              $("#login_btn").click();
+              return false;
+            }
+          }
+        });
+      });
     ')
   ),
   div(class = "login-box",
@@ -101,15 +127,23 @@ login_ui <- fluidPage(
 
 # Add a function to check if source files exist
 check_source_files <- function() {
-  ui_file <- "R/ui.R"
-  server_file <- "R/server.R"
+  app_dir <- getwd()
+  ui_file <- file.path(app_dir, "R/ui.R")
+  server_file <- file.path(app_dir, "R/server.R")
+  
+  missing_files <- character(0)
   
   if (!file.exists(ui_file)) {
-    stop("UI file not found: ", ui_file)
+    missing_files <- c(missing_files, ui_file)
   }
   
   if (!file.exists(server_file)) {
-    stop("Server file not found: ", server_file)
+    missing_files <- c(missing_files, server_file)
+  }
+  
+  if (length(missing_files) > 0) {
+    stop("Critical files not found: \n", paste("- ", missing_files, collapse = "\n"), 
+         "\nPlease ensure you're running the app from the correct directory.")
   }
   
   return(TRUE)
@@ -129,6 +163,24 @@ ui_combined <- function() {
 
 server_combined <- function(input, output, session) {
   user_authenticated <- reactiveVal(FALSE)
+  last_activity <- reactiveVal(Sys.time())
+  
+  # Session timeout observer
+  observe({
+    invalidateLater(60000) # Check every minute
+    if (user_authenticated() && difftime(Sys.time(), last_activity(), units = "mins") > 30) {
+      showNotification("Session timed out due to inactivity", type = "warning")
+      user_authenticated(FALSE)
+      session$reload()
+    }
+  })
+  
+  # Update last activity time on any input change
+  observeEvent(reactiveValuesToList(input), {
+    if(user_authenticated()) {
+      last_activity(Sys.time())
+    }
+  }, ignoreNULL = TRUE, ignoreInit = TRUE)
   
   # Login handler
   observeEvent(input$login_btn, {

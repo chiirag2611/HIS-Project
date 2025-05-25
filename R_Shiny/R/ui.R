@@ -6,6 +6,7 @@ library(plotly)
 library(reactable)
 library(shinyjs)
 library(shinyjqui)
+library(shinyBS)
 
 ui <- dashboardPage(
   dashboardHeader(title = "Data Pre-Processing for Machine Learning", titleWidth = 500,
@@ -73,9 +74,19 @@ ui <- dashboardPage(
         .btn-action {
           background-color: #3399FF;
           color: white;
+          font-size: 12px;
         }
         .btn-action:hover {
           background-color: #66B2FF;
+          color: white;
+        }
+        .btn-apply {
+          background-color: #00796B;
+          color: white;
+          font-weight: bold;
+        }
+        .btn-apply:hover {
+          background-color: #00897B;
           color: white;
         }
         .btn-primary {
@@ -86,7 +97,55 @@ ui <- dashboardPage(
           background-color: #66B2FF;
           color: white;
         }
-      "))
+        .modal-lg {
+          width: 80%;
+        }
+        .operation-applied {
+          border-left: 5px solid #4CAF50;
+          padding-left: 10px;
+        }
+        /* Progress indicators styling */
+        #preprocessing_progress .nav-pills > li {
+          border: 1px solid #ddd;
+        }
+        #preprocessing_progress .nav-pills > li.active > a {
+          background-color: #3399FF;
+          color: white;
+        }
+        #preprocessing_progress .nav-pills > li.completed > a {
+          background-color: #4CAF50;
+          color: white;
+        }
+        #preprocessing_progress .nav-pills > li > a {
+          border-radius: 0;
+          cursor: default;
+        }
+        @media (max-width: 768px) {
+          .box {
+            width: 100% !important;
+          }
+          .action-buttons {
+            flex-direction: column;
+          }
+          .action-buttons .btn {
+            margin-bottom: 10px;
+          }
+        }
+      ")),
+      tags$script(HTML('
+        function triggerColumnSelection(triggerId) {
+          Shiny.setInputValue("column_selection_trigger", triggerId, {priority: "event"});
+        }
+        $(function() { 
+          $("[data-toggle=\'tooltip\']").tooltip();
+          
+          // Prevent navigation when clicking on progress indicators
+          $("#preprocessing_progress .nav-pills > li > a").on("click", function(e) {
+            e.preventDefault();
+            return false;
+          });
+        });
+      '))
     ),
     useShinyjs(),
     tabItems(
@@ -95,7 +154,7 @@ ui <- dashboardPage(
         tabName = "load_data",
         fluidRow(
           box(
-            title = "Loading Data",
+            title = HTML("Loading Data <span data-toggle='tooltip' title='Upload your dataset in CSV or Excel format' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             class = "custom-box",
@@ -103,22 +162,22 @@ ui <- dashboardPage(
             helpText("Upload a CSV or Excel file.")
           ),
           box(
-            title = "File Details",
+            title = HTML("File Details <span data-toggle='tooltip' title='View information about your uploaded dataset including dimensions and data types' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             verbatimTextOutput("fileDetails")
           )
         ),
-        # NEW COLUMN SELECTOR SECTION
+        # Column Selector Section
         fluidRow(
           box(
-            title = "Column Selector",
+            title = HTML("Column Selector <span data-toggle='tooltip' title='Select specific columns from your dataset for analysis and preprocessing' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 12,
             fluidRow(
               column(
                 width = 3,
-                h4("Quick Actions"),
+                h4(HTML("Quick Actions <span data-toggle='tooltip' title='Tools to quickly select or filter columns in your dataset' class='fa fa-question-circle'></span>")),
                 div(
                   style = "margin-bottom: 15px;",
                   actionButton("select_all_cols", "Select All", class = "btn-sm btn-action"),
@@ -126,10 +185,10 @@ ui <- dashboardPage(
                 ),
                 div(
                   style = "margin-bottom: 15px;",
-                  actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"), # nolint
-                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action") # nolint
+                  actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"),
+                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action")
                 ),
-                h4("First/Last Columns"),
+                h4(HTML("First/Last Columns <span data-toggle='tooltip' title='Select columns based on their position in the dataset' class='fa fa-question-circle'></span>")),
                 div(
                   style = "margin-bottom: 15px;",
                   numericInput("first_n_cols", "Select First N Columns:", value = 10, min = 1, max = 1000),
@@ -140,7 +199,7 @@ ui <- dashboardPage(
                   numericInput("last_n_cols", "Select Last N Columns:", value = 10, min = 1, max = 1000),
                   actionButton("apply_last_n", "Apply", class = "btn-sm btn-action")
                 ),
-                h4("Range Selection"),
+                h4(HTML("Range Selection <span data-toggle='tooltip' title='Select a continuous range of columns by position' class='fa fa-question-circle'></span>")),
                 div(
                   style = "margin-bottom: 15px;",
                   uiOutput("range_slider_ui"),
@@ -149,7 +208,7 @@ ui <- dashboardPage(
               ),
               column(
                 width = 9,
-                h4("Column Selection"),
+                h4(HTML("Column Selection <span data-toggle='tooltip' title='Individually select columns to include in your analysis' class='fa fa-question-circle'></span>")),
                 div(
                   style = "margin-bottom: 15px;",
                   textInput("search_columns", "Search Columns:", placeholder = "Type to search...")
@@ -168,18 +227,18 @@ ui <- dashboardPage(
         ),
         fluidRow(
           box(
-            title = "Data Exploration",
+            title = HTML("Data Exploration <span data-toggle='tooltip' title='View and analyze your dataset with summary statistics and data visualization' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 12,
             tabsetPanel(
               tabPanel(
-                title = "Show Data",
+                title = HTML("Show Data <span data-toggle='tooltip' title='View the raw data in tabular format' class='fa fa-question-circle'></span>"),
                 style = "overflow-x: auto;",
                 DTOutput("table"),
                 width = 9
               ),
               tabPanel(
-                title = "Data Summary",
+                title = HTML("Data Summary <span data-toggle='tooltip' title='View summary statistics and information about each column' class='fa fa-question-circle'></span>"),
                 DTOutput("dataSummary")
               )
             )
@@ -187,14 +246,14 @@ ui <- dashboardPage(
         ),
         fluidRow(
           box(
-              title = "Drop Feature",
+              title = HTML("Drop Feature <span data-toggle='tooltip' title='Remove selected features/columns from your dataset' class='fa fa-question-circle'></span>"),
               solidHeader = TRUE,
               width = 6,
               uiOutput("drop_feature_ui"),
               actionButton("apply_drop", "Delete")
             ),    
           box(
-            title = "Add Feature",
+            title = HTML("Add Feature <span data-toggle='tooltip' title='Add back previously dropped features to your dataset' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             uiOutput("add_feature_ui"),
@@ -203,7 +262,7 @@ ui <- dashboardPage(
         ),
         fluidRow(
           box(
-            title = "Convert Numerical to Categorical",
+            title = HTML("Convert Numerical to Categorical <span data-toggle='tooltip' title='Transform numerical variables into categorical format for classification or grouping' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             selectInput("num_to_cat", "Select Numerical Variables:", 
@@ -211,7 +270,7 @@ ui <- dashboardPage(
             actionButton("apply_num_to_cat", "Convert to Categorical")
           ),
           box(
-            title = "Convert Categorical to Numerical",
+            title = HTML("Convert Categorical to Numerical <span data-toggle='tooltip' title='Transform categorical variables into numerical format for use in mathematical operations' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             selectInput("cat_to_num", "Select Categorical Variables:",
@@ -224,20 +283,40 @@ ui <- dashboardPage(
       # Second tab item
       tabItem(
         tabName = "preprocessing",
+        # Progress Indicator
+        div(
+          id = "preprocessing_progress",
+          style = "margin-bottom: 20px;",
+          tags$ul(
+            class = "nav nav-pills nav-justified",
+            tags$li(class = "active", tags$a(href = "#", "1. Missing Values")),
+            tags$li(tags$a(href = "#", "2. Outliers")),
+            tags$li(tags$a(href = "#", "3. Transformation")),
+            tags$li(tags$a(href = "#", "4. Encoding"))
+          )
+        ),
         fluidRow(
           box(
-            title = "Handle Missing Values", 
+            title = HTML("Handle Missing Values <span data-toggle='tooltip' title='Remove or replace missing values in your dataset' class='fa fa-question-circle'></span>"), 
             solidHeader = TRUE, 
             width = 6,
+            collapsible = TRUE,
             uiOutput("missing_var_ui"),
             textOutput("missing_percent"),
             uiOutput("missing_method_ui"),
-            actionButton("apply_missing", "Apply")
+            div(
+              style = "display: flex; justify-content: space-between; margin-top: 15px;",
+              actionButton("select_missing_cols", "Select Multiple Columns", 
+                          class = "btn-sm btn-action",
+                          onclick = "triggerColumnSelection('missing')"),
+              actionButton("apply_missing", "Apply", class = "btn-apply")
+            )
           ),
           box(
-            title = "Handle Outliers", 
+            title = HTML("Handle Outliers <span data-toggle='tooltip' title='Detect and manage outlier values in your dataset' class='fa fa-question-circle'></span>"), 
             solidHeader = TRUE, 
             width = 6,
+            collapsible = TRUE,
             uiOutput("outlier_var_ui"),
             selectInput(
               inputId = "outlier_method", 
@@ -245,14 +324,21 @@ ui <- dashboardPage(
               choices = c("Remove Outliers", "Replace with Median", "Replace with Mean"), 
               selected = "Remove Outliers"
             ),
-            actionButton("apply_outliers", "Apply")
+            div(
+              style = "display: flex; justify-content: space-between; margin-top: 15px;",
+              actionButton("select_outlier_cols", "Select Multiple Columns", 
+                          class = "btn-sm btn-action",
+                          onclick = "triggerColumnSelection('outliers')"),
+              actionButton("apply_outliers", "Apply", class = "btn-apply")
+            )
           )
         ),
         fluidRow(
           box(
-            title = "Data Transformation",
+            title = HTML("Data Transformation <span data-toggle='tooltip' title='Scale or normalize your data for better model performance' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
+            collapsible = TRUE,
             uiOutput("transform_var_ui"),
             selectInput(
               inputId = "transformation_method",
@@ -261,18 +347,18 @@ ui <- dashboardPage(
               selected = "Min-Max Scaling"
             ),
             div(
-              style = "display: flex; align-items: center; gap: 10px;",
-              actionButton("apply_transformation", "Apply"),
-              tags$span(
-                "⚠️ Be cautious when applying transformations to the target variable; only Log Transformation allows recovery of original values.",
-                style = "color: orange; font-size: 12px;"
-              )
+              style = "display: flex; justify-content: space-between; margin-top: 15px;",
+              actionButton("select_transform_cols", "Select Multiple Columns", 
+                          class = "btn-sm btn-action",
+                          onclick = "triggerColumnSelection('transformation')"),
+              actionButton("apply_transformation", "Apply", class = "btn-apply")
             )
           ),
           box(
-            title = "Encoding Data",
+            title = HTML("Encoding Data <span data-toggle='tooltip' title='Convert categorical variables to numerical format for machine learning algorithms' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
+            collapsible = TRUE,
             uiOutput("encoding_var_ui"),
             selectInput(
               inputId = "encoding_method",
@@ -281,13 +367,22 @@ ui <- dashboardPage(
               selected = "Label Encoding"
             ),
             div(
-              style = "display: flex; align-items: center;",  # Align button and message in the same line
-              actionButton("apply_encoding", "Apply"),
-              #tags$span(
-                #"❗ Avoid applying One-Hot Encoding to the target variable.",
-                #style = "color: red; margin-left: 10px;"  # Add spacing and red color
-              #)
+              style = "display: flex; justify-content: space-between; margin-top: 15px;",
+              actionButton("select_encoding_cols", "Select Multiple Columns", 
+                          class = "btn-sm btn-action",
+                          onclick = "triggerColumnSelection('encoding')"),
+              actionButton("apply_encoding", "Apply", class = "btn-apply")
             )
+          )
+        ),
+        # Preprocessing Summary
+        fluidRow(
+          box(
+            title = "Preprocessing Summary",
+            solidHeader = TRUE,
+            width = 12,
+            status = "primary",
+            tableOutput("preprocessing_summary")
           )
         ),
         fluidRow(
@@ -303,6 +398,46 @@ ui <- dashboardPage(
             )
           )
         )
+      )
+    ),
+    
+    # Column Selection Modal
+    bsModal(
+      id = "columnSelectionModal",
+      title = "Select Columns for Operation",
+      trigger = "column_selection_trigger",
+      size = "large",
+      fluidRow(
+        column(
+          width = 3,
+          h4("Quick Actions"),
+          div(
+            style = "margin-bottom: 15px;",
+            actionButton("modal_select_all", "Select All", class = "btn-sm btn-action"),
+            actionButton("modal_deselect_all", "Deselect All", class = "btn-sm btn-action")
+          ),
+          div(
+            style = "margin-bottom: 15px;",
+            actionButton("modal_select_numeric", "Select Numeric", class = "btn-sm btn-action"),
+            actionButton("modal_select_categorical", "Select Categorical", class = "btn-sm btn-action")
+          )
+        ),
+        column(
+          width = 9,
+          h4("Column Selection"),
+          div(
+            style = "margin-bottom: 15px;",
+            textInput("modal_search_columns", "Search Columns:", placeholder = "Type to search...")
+          ),
+          div(
+            style = "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;",
+            uiOutput("modal_column_selector")
+          )
+        )
+      ),
+      footer = tagList(
+        actionButton("modal_cancel", "Cancel", class = "btn-default"),
+        actionButton("modal_confirm", "Confirm Selection", class = "btn-primary")
       )
     )
   )

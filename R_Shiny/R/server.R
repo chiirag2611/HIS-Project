@@ -13,10 +13,20 @@ library(shinyjqui)
 library(shinycssloaders)
 library(missForest)
 library(mice)
+library(shinyBS)
 
 server <- function(input, output, session) {
   
   ## Loading Data
+  
+  # Track which operation triggered the column selection
+  current_operation <- reactiveVal(NULL)
+  
+  # Store selected columns from modal
+  modal_selected_cols <- reactiveVal(character(0))
+  
+  # Store previous selections to restore on cancel
+  previous_selected_cols <- reactiveVal(character(0))
   
   # Reactive data to store the uploaded data 
   training_data <- reactiveVal(NULL)
@@ -25,6 +35,218 @@ server <- function(input, output, session) {
   y_display <- reactiveVal(NULL)
   save_variable <- reactiveVal(NULL)
   dropped_features <- reactiveVal(list())
+  
+  # Create an empty reactiveValues object to store preprocessing operations
+  preprocessing_ops <- reactiveValues(
+    missing_values = NULL,
+    outliers = NULL,
+    transformation = NULL,
+    encoding = NULL
+  )
+  
+  # Helper function to update all checkbox states
+  update_checkbox_states <- function() {
+    req(display_data())
+    df <- display_data()
+    selected_cols <- modal_selected_cols()
+    
+    # Handle the case where no columns are selected
+    if (length(selected_cols) == 0) {
+      for (col in names(df)) {
+        checkbox_id <- paste0("modal_col_", make.names(col))
+        updateCheckboxInput(session, checkbox_id, value = FALSE)
+      }
+      return()
+    }
+    
+    # Normal case with selections
+    for (col in names(df)) {
+      checkbox_id <- paste0("modal_col_", make.names(col))
+      is_selected <- col %in% selected_cols
+      updateCheckboxInput(session, checkbox_id, value = is_selected)
+    }
+  }
+  
+  # Observe when column selection is triggered
+  observeEvent(input$column_selection_trigger, {
+    current_operation(input$column_selection_trigger)
+  
+    # Save current selections based on the current operation
+    if (current_operation() == "missing") {
+      previous_selected_cols(input$missing_var)
+      modal_selected_cols(input$missing_var)
+    } else if (current_operation() == "outliers") {
+      previous_selected_cols(input$outlier_var)
+      modal_selected_cols(input$outlier_var)
+    } else if (current_operation() == "transformation") {
+      previous_selected_cols(input$transform_var)
+      modal_selected_cols(input$transform_var)
+    } else if (current_operation() == "encoding") {
+      previous_selected_cols(input$encoding_var)
+      modal_selected_cols(input$encoding_var)
+    } else {
+      previous_selected_cols(character(0))
+      modal_selected_cols(character(0))  # Default to empty
+    }
+    
+    # Open modal and initialize checkbox states after it's rendered
+    toggleModal(session, "columnSelectionModal", toggle = "open")
+    
+    # We need a slight delay to allow the modal UI to render before updating checkboxes
+    shinyjs::delay(100, {
+      update_checkbox_states()
+    })
+  })
+  
+  # Modal column selector UI
+  output$modal_column_selector <- renderUI({
+    req(display_data())
+    df <- display_data()
+    col_names <- names(df)
+    
+    # Filter columns based on search term if any
+    if (!is.null(input$modal_search_columns) && input$modal_search_columns != "") {
+      search_term <- tolower(input$modal_search_columns)
+      col_names <- col_names[grepl(search_term, tolower(col_names))]
+    }
+    
+    if (length(col_names) == 0) {
+      return(tags$div("No columns match your search criteria"))
+    }
+    
+    # Get current selection state
+    current_selections <- modal_selected_cols()
+    
+    # Create checkboxes
+    checkbox_list <- lapply(col_names, function(col) {
+      is_numeric <- is.numeric(df[[col]])
+      type_label <- if(is_numeric) "numeric" else "categorical"
+      type_color <- if(is_numeric) "#007bff" else "#28a745"
+      
+      is_selected <- col %in% current_selections
+      
+      div(
+        style = "margin-bottom: 5px;",
+        checkboxInput(
+          inputId = paste0("modal_col_", make.names(col)),
+          label = tags$span(
+            col,
+            tags$span(
+              style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
+              paste0("(", type_label, ")")
+            )
+          ),
+          value = is_selected
+        )
+      )
+    })
+    
+    do.call(tagList, checkbox_list)
+  })
+  
+  # Modal quick actions
+  observeEvent(input$modal_select_all, {
+    df <- display_data()
+    col_names <- names(df)
+    modal_selected_cols(col_names)
+    update_checkbox_states()
+  })
+  
+  observeEvent(input$modal_deselect_all, {
+    # Clear the selections completely
+    modal_selected_cols(character(0))
+    
+    # Update all checkbox states to deselected
+    df <- display_data()
+    for (col in names(df)) {
+      checkbox_id <- paste0("modal_col_", make.names(col))
+      updateCheckboxInput(session, checkbox_id, value = FALSE)
+    }
+  })
+  
+  observeEvent(input$modal_select_numeric, {
+    df <- display_data()
+    numeric_cols <- names(df)[sapply(df, is.numeric)]
+    modal_selected_cols(numeric_cols)
+    update_checkbox_states()
+  })
+  
+  observeEvent(input$modal_select_categorical, {
+    df <- display_data()
+    cat_cols <- names(df)[sapply(df, function(x) is.factor(x) || is.character(x))]
+    modal_selected_cols(cat_cols)
+    update_checkbox_states()
+  })
+  
+  # Observer for search field changes - forces UI update
+  observeEvent(input$modal_search_columns, {
+    # This will trigger a re-render of the modal_column_selector UI
+    # with the updated search filter
+  })
+  
+  # Handle modal confirmation
+  observeEvent(input$modal_confirm, {
+    req(current_operation())
+    
+    # Get all selected columns from checkboxes
+    df <- display_data()
+    selected_cols <- c()
+    
+    # If we've explicitly deselected all, ensure the list is empty
+    if (length(modal_selected_cols()) == 0) {
+      selected_cols <- character(0)
+    } else {
+      # Otherwise, gather selected columns from checkboxes
+      for (col in names(df)) {
+        checkbox_id <- paste0("modal_col_", make.names(col))
+        if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
+          selected_cols <- c(selected_cols, col)
+        }
+      }
+    }
+    
+    # Save the confirmed selection
+    modal_selected_cols(selected_cols)
+    
+    # Update the appropriate input based on current operation
+    if (current_operation() == "missing") {
+      updateSelectInput(session, "missing_var", selected = selected_cols)
+    } 
+    else if (current_operation() == "outliers") {
+      updateSelectInput(session, "outlier_var", selected = selected_cols)
+    }
+    else if (current_operation() == "transformation") {
+      updateSelectInput(session, "transform_var", selected = selected_cols)
+    }
+    else if (current_operation() == "encoding") {
+      updateSelectInput(session, "encoding_var", selected = selected_cols)
+    }
+    
+    toggleModal(session, "columnSelectionModal", toggle = "close")
+  })
+  
+  # Handle modal cancel button
+  observeEvent(input$modal_cancel, {
+    # Restore previous selections to what they were before opening the modal
+    modal_selected_cols(previous_selected_cols())
+    
+    # Make sure any UI inputs get restored to their previous state
+    if (current_operation() == "missing") {
+      updateSelectInput(session, "missing_var", selected = previous_selected_cols())
+    } 
+    else if (current_operation() == "outliers") {
+      updateSelectInput(session, "outlier_var", selected = previous_selected_cols())
+    }
+    else if (current_operation() == "transformation") {
+      updateSelectInput(session, "transform_var", selected = previous_selected_cols())
+    }
+    else if (current_operation() == "encoding") {
+      updateSelectInput(session, "encoding_var", selected = previous_selected_cols())
+    }
+    
+    # Close the modal without updating any selections
+    toggleModal(session, "columnSelectionModal", toggle = "close")
+  })
   
   # Handle submit data button
   observeEvent(input$submit_data, {
@@ -76,6 +298,18 @@ server <- function(input, output, session) {
             training_data(data)
             display_data(data)
             showNotification(paste("Data loaded successfully from sheet: '", sheet_names[1], "'", sep=""), type = "message")
+            
+            # Reset progress indicators
+            shinyjs::runjs('
+              $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
+              $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
+            ')
+            
+            # Reset operation-applied indicators
+            removeClass(id = "missing_var_ui", class = "operation-applied")
+            removeClass(id = "outlier_var_ui", class = "operation-applied")
+            removeClass(id = "transform_var_ui", class = "operation-applied")
+            removeClass(id = "encoding_var_ui", class = "operation-applied")
           }
         } else {
           # Use modal dialog to select a sheet only if multiple sheets exist
@@ -98,6 +332,18 @@ server <- function(input, output, session) {
         training_data(data)
         display_data(data)
         showNotification("Data uploaded successfully!", type = "message")
+        
+        # Reset progress indicators
+        shinyjs::runjs('
+          $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
+          $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
+        ')
+        
+        # Reset operation-applied indicators
+        removeClass(id = "missing_var_ui", class = "operation-applied")
+        removeClass(id = "outlier_var_ui", class = "operation-applied")
+        removeClass(id = "transform_var_ui", class = "operation-applied")
+        removeClass(id = "encoding_var_ui", class = "operation-applied")
       }
     }
   })
@@ -134,6 +380,18 @@ server <- function(input, output, session) {
       training_data(data)
       display_data(data)
       showNotification(paste("Data from sheet '", input$sheet_select, "' loaded successfully!", sep=""), type = "message")
+      
+      # Reset progress indicators
+      shinyjs::runjs('
+        $("#preprocessing_progress .nav-pills > li").removeClass("active").removeClass("completed");
+        $("#preprocessing_progress .nav-pills > li:nth-child(1)").addClass("active");
+      ')
+      
+      # Reset operation-applied indicators
+      removeClass(id = "missing_var_ui", class = "operation-applied")
+      removeClass(id = "outlier_var_ui", class = "operation-applied")
+      removeClass(id = "transform_var_ui", class = "operation-applied")
+      removeClass(id = "encoding_var_ui", class = "operation-applied")
     }
     
     removeModal()  # Close the modal after selection
@@ -620,8 +878,10 @@ server <- function(input, output, session) {
           current_display_data[[var]] <- as.numeric(as.character(current_display_data[[var]]))
           successfully_converted <- c(successfully_converted, var)
         } else {
-          # Add to the failed list if conversion isn't possible
-          failed_conversions <- c(failed_conversions, var)
+          # Identify which values can't be converted
+          problematic_values <- non_missing_values[!grepl("^\\s*-?[0-9]*(\\.[0-9]+)?\\s*$", non_missing_values)]
+          problematic_sample <- paste(head(unique(problematic_values), 5), collapse=", ")
+          showNotification(paste("Cannot convert", var, "to numeric. Examples of non-numeric values:", problematic_sample), type = "error")
         }
       }
     }
@@ -661,9 +921,26 @@ server <- function(input, output, session) {
   
   output$missing_percent <- renderText({
     req(input$missing_var, display_data())  # Ensure variable selection and data availability
-    var <- display_data()[[input$missing_var]]  # Extract the selected variable's column
-    percent <- sum(is.na(var)) / length(var) * 100  # Compute the percentage of missing values
-    paste("Missing Percent:", round(percent, 2), "%")  # Format and return the result as text
+    
+    if (length(input$missing_var) == 1) {
+      var <- display_data()[[input$missing_var]]  # Extract the selected variable's column
+      percent <- sum(is.na(var)) / length(var) * 100  # Compute the percentage of missing values
+      paste("Missing Percent:", round(percent, 2), "%")  # Format and return the result as text
+    } else if (length(input$missing_var) > 1) {
+      # For multiple variables, show aggregate stats
+      data <- display_data()
+      total_cells <- length(input$missing_var) * nrow(data)
+      missing_count <- 0
+      
+      for (var_name in input$missing_var) {
+        missing_count <- missing_count + sum(is.na(data[[var_name]]))
+      }
+      
+      percent <- missing_count / total_cells * 100
+      paste("Missing Percent (across selected variables):", round(percent, 2), "%")
+    } else {
+      "Select at least one variable to see missing data percentage."
+    }
   })
   
   current_missing_var <- reactiveVal(NULL)  # Holds the currently selected variable for missing value handling
@@ -673,125 +950,212 @@ server <- function(input, output, session) {
     req(display_data())  # Ensure displayed data is available
     variables <- names(display_data())  # Get the column names of the displayed data
     
-    selectInput(
+    selectizeInput(
       inputId = "missing_var",
-      label = "Select Variable with Missing Values:",
+      label = "Select Variable(s) with Missing Values:",
       choices = variables,
-      selected = NULL
+      selected = NULL,
+      multiple = TRUE
     )
   })
   
   # Missing value handling method selection based on variable type
   output$missing_method_ui <- renderUI({
     req(input$missing_var, display_data())
-    var <- input$missing_var
     data <- display_data()
     
-    if (is.factor(data[[var]]) || is.character(data[[var]])) {
-      # For categorical variables
-      selectInput(
-        inputId = "missing_method",
-        label = "Select Method to Handle Missing Values:",
-        choices = c("Row Deletion", "Handle using Mode", "Create Missing Category"),
-        selected = "Handle using Mode"
-      )
+    # Check if we have multiple variables selected
+    if (length(input$missing_var) > 1) {
+      # If multiple variables are selected, determine if they're all the same type
+      all_categorical <- all(sapply(input$missing_var, function(var) {
+        is.factor(data[[var]]) || is.character(data[[var]])
+      }))
+      
+      all_numeric <- all(sapply(input$missing_var, function(var) {
+        is.numeric(data[[var]])
+      }))
+      
+      if (all_categorical) {
+        # For all categorical variables
+        selectInput(
+          inputId = "missing_method",
+          label = "Select Method to Handle Missing Values:",
+          choices = c("Row Deletion", "Handle using Mode", "Create Missing Category"),
+          selected = "Handle using Mode"
+        )
+      } else if (all_numeric) {
+        # For all numerical variables
+        selectInput(
+          inputId = "missing_method",
+          label = "Select Method to Handle Missing Values:",
+          choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
+          selected = "Handle using Mean"
+        )
+      } else {
+        # Mixed variable types
+        selectInput(
+          inputId = "missing_method",
+          label = "Select Method to Handle Missing Values:",
+          choices = c("Row Deletion", "Handle using Mode"),
+          selected = "Handle using Mode"
+        )
+      }
+    } else if (length(input$missing_var) == 1) {
+      # Single variable selected
+      var <- input$missing_var
+      if (is.factor(data[[var]]) || is.character(data[[var]])) {
+        # For categorical variables
+        selectInput(
+          inputId = "missing_method",
+          label = "Select Method to Handle Missing Values:",
+          choices = c("Row Deletion", "Handle using Mode", "Create Missing Category"),
+          selected = "Handle using Mode"
+        )
+      } else {
+        # For numerical variables
+        selectInput(
+          inputId = "missing_method",
+          label = "Select Method to Handle Missing Values:",
+          choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
+          selected = "Handle using Mean"
+        )
+      }
     } else {
-      # For numerical variables
+      # No variables selected
       selectInput(
         inputId = "missing_method",
         label = "Select Method to Handle Missing Values:",
-        choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean"),
-        selected = "Handle using Mean"
+        choices = c("Row Deletion", "Handle using Mode", "Handle using Median", "Handle using Mean", "Create Missing Category"),
+        selected = "Handle using Mode"
       )
     }
   })
   
   # Missing value handling implementation
   observeEvent(input$apply_missing, {
-    tryCatch({
-      req(input$missing_var, input$missing_method, display_data(), training_data())
-      
-      displayed <- display_data()
-      train <- training_data()
-      var <- input$missing_var
-      missing_count <- sum(is.na(displayed[[var]]))
-      
-      if (missing_count > 0) {
-        # Determine if the variable is categorical or numerical
-        is_categorical <- is.factor(displayed[[var]]) || is.character(displayed[[var]])
+    req(input$missing_var, input$missing_method, display_data(), training_data())
+    
+    # Initialize variables for summary
+    total_processed <- 0
+    total_missing_count <- 0
+    processed_vars <- c()
+    
+    # Process each selected variable
+    for (var in input$missing_var) {
+      tryCatch({
+        displayed <- display_data()
+        train <- training_data()
         
-        if (input$missing_method == "Row Deletion") {
-          # Remove rows with missing values in the selected variable
-          rows_to_keep <- !is.na(displayed[[var]])
-          displayed <- displayed[rows_to_keep, ]
-          train <- train[rows_to_keep, ]
-          
-        } else if (input$missing_method == "Handle using Mode") {
-          # Mode imputation works for both categorical and numerical data
-          if (is_categorical) {
-            # For categorical data, get the most frequent category
-            mode_val <- names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1])
-            displayed[[var]][is.na(displayed[[var]])] <- mode_val
-            train[[var]][is.na(train[[var]])] <- mode_val
-          } else {
-            # For numerical data
-            mode_val <- as.numeric(names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1]))
-            displayed[[var]][is.na(displayed[[var]])] <- mode_val
-            train[[var]][is.na(train[[var]])] <- mode_val
-          }
-          
-        } else if (input$missing_method == "Create Missing Category" && is_categorical) {
-          # Create a new "Missing" category for categorical data
-          displayed[[var]] <- as.character(displayed[[var]])
-          train[[var]] <- as.character(train[[var]])
-          
-          displayed[[var]][is.na(displayed[[var]])] <- "Missing"
-          train[[var]][is.na(train[[var]])] <- "Missing"
-          
-          # Convert back to factor if original was factor
-          if (is.factor(displayed[[var]])) {
-            displayed[[var]] <- as.factor(displayed[[var]])
-            train[[var]] <- as.factor(train[[var]])
-          }
-          
-        } else if (input$missing_method == "Handle using Median" && !is_categorical) {
-          # Median imputation (numerical only)
-          median_val <- median(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][is.na(displayed[[var]])] <- median_val
-          train[[var]][is.na(train[[var]])] <- median_val
-          
-        } else if (input$missing_method == "Handle using Mean" && !is_categorical) {
-          # Mean imputation (numerical only)
-          mean_val <- mean(displayed[[var]], na.rm = TRUE)
-          displayed[[var]][is.na(displayed[[var]])] <- mean_val
-          train[[var]][is.na(train[[var]])] <- mean_val
+        # Skip if the variable doesn't exist
+        if (!var %in% names(displayed)) {
+          showNotification(paste("Variable", var, "not found in dataset"), type = "error")
+          next
         }
         
-        # Update both datasets with the changes
-        display_data(displayed)
-        training_data(train)
+        # Count missing values, considering various representations of missingness
+        missing_count <- sum(is.na(displayed[[var]]) | 
+                            displayed[[var]] == "" | 
+                            displayed[[var]] == "NA" |
+                            displayed[[var]] == "NULL")
         
-        # Show confirmation dialog
-        showModal(
-          modalDialog(
-            title = "Missing Values Handled",
-            paste("The variable", var, "had", missing_count, "missing values."),
-            if (input$missing_method == "Row Deletion") {
-              paste(missing_count, "rows were removed.")
+      # Add visual indicator that operation was applied
+    addClass(id = "missing_var_ui", class = "operation-applied")
+    
+    # Update preprocessing summary
+    preprocessing_ops$missing_values <- list(
+      method = input$missing_method,
+      variables = paste(input$missing_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+        
+        if (missing_count > 0) {
+          # Determine if the variable is categorical or numerical
+          is_categorical <- is.factor(displayed[[var]]) || is.character(displayed[[var]])
+          
+          if (input$missing_method == "Row Deletion") {
+            # Remove rows with missing values in the selected variable
+            rows_to_keep <- !is.na(displayed[[var]])
+            displayed <- displayed[rows_to_keep, ]
+            train <- train[rows_to_keep, ]
+            
+          } else if (input$missing_method == "Handle using Mode") {
+            # Mode imputation works for both categorical and numerical data
+            if (is_categorical) {
+              # For categorical data, get the most frequent category
+              mode_val <- names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1])
+              displayed[[var]][is.na(displayed[[var]])] <- mode_val
+              train[[var]][is.na(train[[var]])] <- mode_val
             } else {
-              paste("Missing values have been replaced using the", 
-                    tolower(gsub("Handle using ", "", input$missing_method)), "method.")
-            },
-            easyClose = TRUE,
-            footer = modalButton("Close")
-          )
+              # For numerical data
+              mode_val <- as.numeric(names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1]))
+              displayed[[var]][is.na(displayed[[var]])] <- mode_val
+              train[[var]][is.na(train[[var]])] <- mode_val
+            }
+            
+          } else if (input$missing_method == "Create Missing Category" && is_categorical) {
+            # Create a new "Missing" category for categorical data
+            displayed[[var]] <- as.character(displayed[[var]])
+            train[[var]] <- as.character(train[[var]])
+            
+            displayed[[var]][is.na(displayed[[var]])] <- "Missing"
+            train[[var]][is.na(train[[var]])] <- "Missing"
+            
+            # Convert back to factor if original was factor
+            if (is.factor(displayed[[var]])) {
+              displayed[[var]] <- as.factor(displayed[[var]])
+              train[[var]] <- as.factor(train[[var]])
+            }
+            
+          } else if (input$missing_method == "Handle using Median" && !is_categorical) {
+            # Median imputation (numerical only)
+            median_val <- median(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][is.na(displayed[[var]])] <- median_val
+            train[[var]][is.na(train[[var]])] <- median_val
+            
+          } else if (input$missing_method == "Handle using Mean" && !is_categorical) {
+            # Mean imputation (numerical only)
+            mean_val <- mean(displayed[[var]], na.rm = TRUE)
+            displayed[[var]][is.na(displayed[[var]])] <- mean_val
+            train[[var]][is.na(train[[var]])] <- mean_val
+          }
+          
+          # Update tracking variables
+          total_processed <- total_processed + 1
+          total_missing_count <- total_missing_count + missing_count
+          processed_vars <- c(processed_vars, var)
+          
+          # Update both datasets with the changes
+          #display_data(displayed)
+          #training_data(train)
+          update_datasets(displayed, train, session)
+        } else {
+          showNotification(paste("No missing values found in", var), type = "warning")
+        }
+      }, error = function(e) {
+        showNotification(paste("Error handling missing values in", var, ":", e$message), type = "error")
+      })
+    }
+    
+    # Show summary confirmation dialog if any variables were processed
+    if (total_processed > 0) {
+      showModal(
+        modalDialog(
+          title = "Missing Values Handled",
+          paste(total_processed, "variable(s) processed with a total of", total_missing_count, "missing values."),
+          tags$p(paste("Processed variables:", paste(processed_vars, collapse = ", "))),
+          if (input$missing_method == "Row Deletion") {
+            "Rows with missing values were removed."
+          } else {
+            paste("Missing values have been replaced using the", 
+                  tolower(gsub("Handle using ", "", input$missing_method)), "method.")
+          },
+          easyClose = TRUE,
+          footer = modalButton("Close")
         )
-      } else {
-        showNotification("No missing values found in the selected variable.", type = "warning")
-      }
-    }, error = function(e) {
-      showNotification(paste("Error handling missing values:", e$message), type = "error")
-    })
+      )
+    } else {
+      showNotification("No variables were processed.", type = "warning")
+    }
   })
   
   # Dynamic selection for outliers
@@ -800,11 +1164,12 @@ server <- function(input, output, session) {
     numeric_vars <- names(display_data())[sapply(display_data(), is.numeric)]
     
     if (length(numeric_vars) > 0) {
-      selectInput(
+      selectizeInput(
         inputId = "outlier_var", 
-        label = "Select Numerical Variable:", 
+        label = "Select Numerical Variable(s):", 
         choices = numeric_vars, 
-        selected = NULL
+        selected = NULL,
+        multiple = TRUE
       )
     } else {
       tags$p("No numerical variables available for outlier handling.", style = "color: red;")
@@ -826,33 +1191,49 @@ server <- function(input, output, session) {
 
   # Then use it in outlier handling
   observeEvent(input$apply_outliers, {
-    tryCatch({
-      req(input$outlier_var, input$outlier_method, display_data(), training_data())
-      
-      # Check if variable exists
-      if (!input$outlier_var %in% names(display_data())) {
-        showNotification("Selected variable no longer exists in dataset", type = "error")
-        return()
-      }
-      
-      # Check for sufficient data
-      if (sum(!is.na(display_data()[[input$outlier_var]])) < 4) {
-        showNotification("Not enough data points for outlier detection", type = "warning")
-        return()
-      }
-      
-      # Ensure variable is numeric before processing
-      if (!is.numeric(display_data()[[input$outlier_var]])) {
-        showNotification("Selected variable must be numeric for outlier detection", type = "error")
-        return()
-      }
-      
-      # Retrieve both datasets
-      displayed <- display_data()
-      training <- training_data()
-      var <- input$outlier_var
-      
-      if (is.numeric(displayed[[var]])) {
+    req(input$outlier_var, input$outlier_method, display_data(), training_data())
+    
+    # Initialize variables for summary
+    total_processed <- 0
+    total_outliers <- 0
+    processed_vars <- c()
+    rows_removed <- 0
+    
+    # Add visual indicator that operation was applied
+    addClass(id = "outlier_var_ui", class = "operation-applied")
+    
+    # Update preprocessing summary
+    preprocessing_ops$outliers <- list(
+      method = input$outlier_method,
+      variables = paste(input$outlier_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+    
+    # Process each selected variable
+    for (var in input$outlier_var) {
+      tryCatch({
+        # Check if variable exists
+        if (!var %in% names(display_data())) {
+          showNotification(paste("Variable", var, "no longer exists in dataset"), type = "error")
+          next
+        }
+        
+        # Check for sufficient data
+        if (sum(!is.na(display_data()[[var]])) < 4) {
+          showNotification(paste("Not enough data points for outlier detection in", var), type = "warning")
+          next
+        }
+        
+        # Ensure variable is numeric before processing
+        if (!is.numeric(display_data()[[var]])) {
+          showNotification(paste("Variable", var, "must be numeric for outlier detection"), type = "error")
+          next
+        }
+        
+        # Retrieve both datasets
+        displayed <- display_data()
+        training <- training_data()
+        
         # Detect outliers using the IQR method
         iqr <- IQR(displayed[[var]], na.rm = TRUE)
         q1 <- quantile(displayed[[var]], 0.25, na.rm = TRUE)
@@ -869,12 +1250,12 @@ server <- function(input, output, session) {
             # Remove outliers from both datasets
             displayed <- displayed[-outliers, ]
             training <- training[-outliers, ]
+            rows_removed <- rows_removed + outlier_count
           } else if (input$outlier_method == "Replace with Median") {
             # Replace outliers with the median in both datasets
             median_val <- median(displayed[[var]], na.rm = TRUE)
             displayed[[var]][outliers] <- median_val
             training[[var]][outliers] <- median_val
-            update_datasets(displayed, training, session)
           } else if (input$outlier_method == "Replace with Mean") {
             # Replace outliers with the mean in both datasets
             mean_val <- mean(displayed[[var]], na.rm = TRUE)
@@ -882,33 +1263,43 @@ server <- function(input, output, session) {
             training[[var]][outliers] <- mean_val
           }
           
-          # Update the reactive datasets
-          display_data(displayed)
-          training_data(training)
+          # Update tracking variables
+          total_processed <- total_processed + 1
+          total_outliers <- total_outliers + outlier_count
+          processed_vars <- c(processed_vars, var)
           
-          # Show a modal message summarizing the changes
-          showModal(
-            modalDialog(
-              title = "Outliers Handled",
-              paste("The variable", var, "had", outlier_count, "outliers detected."),
-              if (input$outlier_method == "Remove Outliers") {
-                paste(outlier_count, "rows were removed.")
-              } else {
-                "The outliers have been replaced."
-              },
-              easyClose = TRUE,
-              footer = modalButton("Close")
-            )
-          )
+          # Update the reactive datasets
+          #display_data(displayed)
+          #training_data(training)
+          # Use the atomic update function
+          update_datasets(displayed, training, session)
         } else {
-          showNotification("No outliers detected in the selected variable.", type = "warning")
+          showNotification(paste("No outliers detected in", var), type = "warning")
         }
-      } else {
-        showNotification("Selected variable is not numeric.", type = "error")
-      }
-    }, error = function(e) {
-      showNotification(paste("Error in outlier detection:", e$message), type = "error")
-    })
+      }, error = function(e) {
+        showNotification(paste("Error in outlier detection for", var, ":", e$message), type = "error")
+      })
+    }
+    
+    # Show summary confirmation dialog if any variables were processed
+    if (total_processed > 0) {
+      showModal(
+        modalDialog(
+          title = "Outliers Handled",
+          paste(total_processed, "variable(s) processed with a total of", total_outliers, "outliers detected."),
+          tags$p(paste("Processed variables:", paste(processed_vars, collapse = ", "))),
+          if (input$outlier_method == "Remove Outliers") {
+            paste(rows_removed, "rows were removed.")
+          } else {
+            "The outliers have been replaced."
+          },
+          easyClose = TRUE,
+          footer = modalButton("Close")
+        )
+      )
+    } else {
+      showNotification("No variables were processed for outlier detection.", type = "warning")
+    }
   })
   ## Data Transformation
   
@@ -931,6 +1322,16 @@ server <- function(input, output, session) {
   
   observeEvent(input$apply_transformation, {
     req(training_data(), input$transform_var, input$transformation_method)
+    
+    # Add visual indicator that operation was applied
+    addClass(id = "transform_var_ui", class = "operation-applied")
+    
+    # Update preprocessing summary
+    preprocessing_ops$transformation <- list(
+      method = input$transformation_method,
+      variables = paste(input$transform_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
     
     withProgress(message = 'Applying transformations...', value = 0, {
       # Create local copies
@@ -1000,68 +1401,111 @@ server <- function(input, output, session) {
   })
   
   # Observer for applying encoding
-observeEvent(input$apply_encoding, {
-  req(training_data(), input$encoding_var, input$encoding_method)
-  
+  observeEvent(input$apply_encoding, {
+    req(training_data(), input$encoding_var, input$encoding_method)
+    
+    # Add visual indicator that operation was applied
+    addClass(id = "encoding_var_ui", class = "operation-applied")
+    
+    # Update preprocessing summary
+    preprocessing_ops$encoding <- list(
+      method = input$encoding_method,
+      variables = paste(input$encoding_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+    
     # Get the training data and selected variables
     data <- training_data()
+    display_data_copy <- display_data() # Get a copy for updating display data too
     selected_vars <- input$encoding_var
     encoded_vars <- list()
-
-    # Check if all selected variables exist and are categorical
-  invalid_vars <- c()
-  for (var in selected_vars) {
-    if (!var %in% names(data)) {
-      invalid_vars <- c(invalid_vars, paste(var, "(not found)"))
-    } else if (is.numeric(data[[var]])) {
-      invalid_vars <- c(invalid_vars, paste(var, "(numeric)"))
-    }
-  }
-  
-  if (length(invalid_vars) > 0) {
-    showNotification(paste("Invalid variables for encoding:", 
-                          paste(invalid_vars, collapse=", ")), 
-                    type = "error")
-    return()
-  }
     
-    for (var in selected_vars) {
-      if (input$encoding_method == "Label Encoding") {
-        data[[var]] <- as.integer(as.factor(data[[var]]))
-        encoded_vars[[var]] <- "Label Encoding"
-      } else if (input$encoding_method == "One-Hot Encoding") {
-        one_hot <- model.matrix(~ . - 1, data.frame(data[[var]]))
-        colnames(one_hot) <- paste(var, colnames(one_hot), sep = "_")
-        data <- cbind(data, one_hot)
-        data[[var]] <- NULL
-        encoded_vars[[var]] <- "One-Hot Encoding"
+    withProgress(message = 'Applying encoding...', value = 0, {
+      # Check if all selected variables exist and are categorical
+      invalid_vars <- c()
+      for (var in selected_vars) {
+        if (!var %in% names(data)) {
+          invalid_vars <- c(invalid_vars, paste(var, "(not found)"))
+        } else if (is.numeric(data[[var]])) {
+          invalid_vars <- c(invalid_vars, paste(var, "(numeric)"))
+        }
       }
-    }
+      
+      if (length(invalid_vars) > 0) {
+        showNotification(paste("Invalid variables for encoding:", 
+                             paste(invalid_vars, collapse=", ")), 
+                       type = "error")
+        return()
+      }
+      
+      incProgress(0.2, detail = "Processing variables...")
+      
+      # Apply the selected encoding method to each variable
+      for (var in selected_vars) {
+        tryCatch({
+          if (input$encoding_method == "Label Encoding") {
+            # For label encoding, we can directly convert the factors to integers
+            if (is.character(data[[var]])) {
+              data[[var]] <- as.factor(data[[var]])
+              display_data_copy[[var]] <- as.factor(display_data_copy[[var]])
+            }
+            data[[var]] <- as.integer(as.factor(data[[var]]))
+            display_data_copy[[var]] <- as.integer(as.factor(display_data_copy[[var]]))
+            encoded_vars[[var]] <- "Label Encoding"
+          } else if (input$encoding_method == "One-Hot Encoding") {
+            # For one-hot encoding, we create new binary columns for each category
+            one_hot <- model.matrix(~ . - 1, data.frame(data[[var]]))
+            colnames(one_hot) <- paste(var, colnames(one_hot), sep = "_")
+            
+            # Create the same one-hot encoding for display data
+            one_hot_display <- model.matrix(~ . - 1, data.frame(display_data_copy[[var]]))
+            colnames(one_hot_display) <- paste(var, colnames(one_hot_display), sep = "_")
+            
+            # Add the new columns and remove the original
+            data <- cbind(data, one_hot)
+            data[[var]] <- NULL
+            
+            display_data_copy <- cbind(display_data_copy, one_hot_display)
+            display_data_copy[[var]] <- NULL
+            
+            encoded_vars[[var]] <- "One-Hot Encoding"
+          }
+        }, error = function(e) {
+          showNotification(paste("Error encoding variable", var, ":", e$message), type = "error")
+        })
+      }
+      
+      incProgress(0.8, detail = "Updating datasets...")
+      
+      # Update both datasets
+      training_data(data)
+      display_data(display_data_copy)
+      
+      incProgress(1.0, detail = "Complete")
+    })
     
-    # Update the dataset with the encoding applied
-    training_data(data)
-    
-    # Show notification
-    showNotification("Encoding applied successfully!", type = "message")
-    
-    # Prepare the encoding message
-    if (length(encoded_vars) == 1) {
+    # Show notification if any variables were encoded
+    if (length(encoded_vars) > 0) {
+      showNotification("Encoding applied successfully!", type = "message")
+      
+      # Prepare the encoding message
+      encoding_method <- unique(unlist(encoded_vars))[1]
       var_list <- paste(names(encoded_vars), collapse = ", ")
-      encoding_msg <- paste(encoded_vars[[1]], "applied in the following variable:", var_list)
-    } else {
-      var_list <- paste(names(encoded_vars), collapse = ", ")
-      encoding_msg <- paste(encoded_vars[[1]], "applied in the following variables:", var_list)
-    }
-    
-    # Show modal dialog with encoded variables
-    showModal(
-      modalDialog(
-        title = "Encoding Applied",
-        encoding_msg,
-        easyClose = TRUE,
-        footer = modalButton("Close")
+      
+      encoding_msg <- paste(encoding_method, "applied to the following variables:", var_list)
+      
+      # Show modal dialog with encoded variables
+      showModal(
+        modalDialog(
+          title = "Encoding Applied",
+          encoding_msg,
+          easyClose = TRUE,
+          footer = modalButton("Close")
+        )
       )
-    )
+    } else {
+      showNotification("No variables were encoded.", type = "warning")
+    }
     
     # Force garbage collection to free memory
     gc()
@@ -1231,4 +1675,143 @@ observeEvent(input$apply_encoding, {
                        type = "error")
     }
   })
+  
+  # Consider adding this functionality for preprocessing sections that might be computationally intensive
+  observe({
+    # Only enable transformation on larger datasets if explicitly allowed
+    if (!is.null(display_data()) && nrow(display_data()) > 10000) {
+      shinyjs::hide("transformation_section")
+      shinyjs::show("show_transformation_button")
+    } else {
+      shinyjs::show("transformation_section")
+      shinyjs::hide("show_transformation_button")
+    }
+  })
+  
+  # Update progress indicators when operations are applied
+  observeEvent(input$apply_missing, {
+    # Get a reference to the first step's li element using jQuery
+    shinyjs::runjs('
+      $("#preprocessing_progress .nav-pills > li:nth-child(1)").removeClass("active").addClass("completed");
+      $("#preprocessing_progress .nav-pills > li:nth-child(2)").addClass("active");
+    ')
+  })
+  
+  observeEvent(input$apply_outliers, {
+    # Get a reference to the second step's li element using jQuery
+    shinyjs::runjs('
+      $("#preprocessing_progress .nav-pills > li:nth-child(2)").removeClass("active").addClass("completed");
+      $("#preprocessing_progress .nav-pills > li:nth-child(3)").addClass("active");
+    ')
+  })
+  
+  observeEvent(input$apply_transformation, {
+    # Get a reference to the third step's li element using jQuery
+    shinyjs::runjs('
+      $("#preprocessing_progress .nav-pills > li:nth-child(3)").removeClass("active").addClass("completed");
+      $("#preprocessing_progress .nav-pills > li:nth-child(4)").addClass("active");
+    ')
+  })
+  
+  observeEvent(input$apply_encoding, {
+    # Get a reference to the fourth step's li element using jQuery
+    shinyjs::runjs('
+      $("#preprocessing_progress .nav-pills > li:nth-child(4)").removeClass("active").addClass("completed");
+    ')
+  })
+  
+  # Update preprocessing operations when applied
+  observeEvent(input$apply_missing, {
+    preprocessing_ops$missing_values <- list(
+      method = input$missing_method,
+      variables = paste(input$missing_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+  })
+  
+  observeEvent(input$apply_outliers, {
+    preprocessing_ops$outliers <- list(
+      method = input$outlier_method,
+      variables = paste(input$outlier_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+  })
+  
+  observeEvent(input$apply_transformation, {
+    preprocessing_ops$transformation <- list(
+      method = input$transformation_method,
+      variables = paste(input$transform_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+  })
+  
+  observeEvent(input$apply_encoding, {
+    preprocessing_ops$encoding <- list(
+      method = input$encoding_method,
+      variables = paste(input$encoding_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+  })
+  
+  # Render the preprocessing summary table
+  output$preprocessing_summary <- renderTable({
+    # Create a dataframe to hold the summary
+    summary_data <- data.frame(
+      Operation = character(),
+      Method = character(),
+      Variables = character(),
+      Timestamp = character(),
+      stringsAsFactors = FALSE
+    )
+    
+    # Add missing values operation if it exists
+    if (!is.null(preprocessing_ops$missing_values)) {
+      summary_data <- rbind(summary_data, data.frame(
+        Operation = "Missing Values",
+        Method = preprocessing_ops$missing_values$method,
+        Variables = preprocessing_ops$missing_values$variables,
+        Timestamp = preprocessing_ops$missing_values$timestamp,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    # Add outliers operation if it exists
+    if (!is.null(preprocessing_ops$outliers)) {
+      summary_data <- rbind(summary_data, data.frame(
+        Operation = "Outliers",
+        Method = preprocessing_ops$outliers$method,
+        Variables = preprocessing_ops$outliers$variables,
+        Timestamp = preprocessing_ops$outliers$timestamp,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    # Add transformation operation if it exists
+    if (!is.null(preprocessing_ops$transformation)) {
+      summary_data <- rbind(summary_data, data.frame(
+        Operation = "Transformation",
+        Method = preprocessing_ops$transformation$method,
+        Variables = preprocessing_ops$transformation$variables,
+        Timestamp = preprocessing_ops$transformation$timestamp,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    # Add encoding operation if it exists
+    if (!is.null(preprocessing_ops$encoding)) {
+      summary_data <- rbind(summary_data, data.frame(
+        Operation = "Encoding",
+        Method = preprocessing_ops$encoding$method,
+        Variables = preprocessing_ops$encoding$variables,
+        Timestamp = preprocessing_ops$encoding$timestamp,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    if (nrow(summary_data) == 0) {
+      return(data.frame(Message = "No preprocessing operations applied yet."))
+    }
+    
+    return(summary_data)
+  }, bordered = TRUE, hover = TRUE, spacing = "m", align = "l")
 } # End of server function

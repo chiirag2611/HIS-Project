@@ -15,7 +15,7 @@ check_and_install_packages <- function(packages) {
 # List of required packages
 required_packages <- c("shiny", "shinydashboard", "shinyjs", "readxl", "DT", "plotly", 
                       "ROSE", "caret", "smotefamily", "reactable", "shinyjqui", 
-                      "shinycssloaders", "bslib")
+                      "shinycssloaders", "bslib", "shinyBS")
 
 # Check and install missing packages
 check_and_install_packages(required_packages)

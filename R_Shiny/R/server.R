@@ -11,6 +11,8 @@ library(reactable)
 library(shinyjs)
 library(shinyjqui)
 library(shinycssloaders)
+library(missForest)
+library(mice)
 
 server <- function(input, output, session) {
   
@@ -666,20 +668,20 @@ server <- function(input, output, session) {
   
   current_missing_var <- reactiveVal(NULL)  # Holds the currently selected variable for missing value handling
   
-  # UI for selecting a variable to handle missing values.
+  # UI for selecting a variable to handle missing values
   output$missing_var_ui <- renderUI({
     req(display_data())  # Ensure displayed data is available
     variables <- names(display_data())  # Get the column names of the displayed data
     
     selectInput(
-      inputId = "missing_var", 
-      label = "Select Variable to Handle Missing Values:", 
-      choices = variables, 
+      inputId = "missing_var",
+      label = "Select Variable with Missing Values:",
+      choices = variables,
       selected = NULL
     )
   })
   
-  # Missing value handling logic
+  # Missing value handling method selection based on variable type
   output$missing_method_ui <- renderUI({
     req(input$missing_var, display_data())
     var <- input$missing_var
@@ -690,7 +692,7 @@ server <- function(input, output, session) {
       selectInput(
         inputId = "missing_method",
         label = "Select Method to Handle Missing Values:",
-        choices = c("Row Deletion", "Handle using Mode"),
+        choices = c("Row Deletion", "Handle using Mode", "Create Missing Category"),
         selected = "Handle using Mode"
       )
     } else {
@@ -704,6 +706,7 @@ server <- function(input, output, session) {
     }
   })
   
+  # Missing value handling implementation
   observeEvent(input$apply_missing, {
     tryCatch({
       req(input$missing_var, input$missing_method, display_data(), training_data())
@@ -718,52 +721,57 @@ server <- function(input, output, session) {
         is_categorical <- is.factor(displayed[[var]]) || is.character(displayed[[var]])
         
         if (input$missing_method == "Row Deletion") {
+          # Remove rows with missing values in the selected variable
           rows_to_keep <- !is.na(displayed[[var]])
           displayed <- displayed[rows_to_keep, ]
           train <- train[rows_to_keep, ]
           
         } else if (input$missing_method == "Handle using Mode") {
-          # Mode works for both categorical and numerical data
+          # Mode imputation works for both categorical and numerical data
           if (is_categorical) {
-            # For categorical data, use the mode directly without conversion
-            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
-          } else {
-            # For numerical data, convert the mode to numeric
-            mode_val <- as.numeric(names(sort(table(displayed[[var]]), decreasing = TRUE)[1]))
-          }
-          displayed[[var]][is.na(displayed[[var]])] <- mode_val
-          train[[var]][is.na(train[[var]])] <- mode_val
-          
-        } else if (input$missing_method == "Handle using Median") {
-          if (is_categorical) {
-            showNotification("Median method cannot be applied to categorical data. Using mode instead.", type = "warning")
-            # Fall back to mode for categorical data
-            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
+            # For categorical data, get the most frequent category
+            mode_val <- names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1])
             displayed[[var]][is.na(displayed[[var]])] <- mode_val
             train[[var]][is.na(train[[var]])] <- mode_val
           } else {
-            median_val <- median(displayed[[var]], na.rm = TRUE)
-            displayed[[var]][is.na(displayed[[var]])] <- median_val
-            train[[var]][is.na(train[[var]])] <- median_val
-          }
-          
-        } else if (input$missing_method == "Handle using Mean") {
-          if (is_categorical) {
-            showNotification("Mean method cannot be applied to categorical data. Using mode instead.", type = "warning")
-            # Fall back to mode for categorical data
-            mode_val <- names(sort(table(displayed[[var]]), decreasing = TRUE)[1])
+            # For numerical data
+            mode_val <- as.numeric(names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1]))
             displayed[[var]][is.na(displayed[[var]])] <- mode_val
             train[[var]][is.na(train[[var]])] <- mode_val
-          } else {
-            mean_val <- mean(displayed[[var]], na.rm = TRUE)
-            displayed[[var]][is.na(displayed[[var]])] <- mean_val
-            train[[var]][is.na(train[[var]])] <- mean_val
           }
+          
+        } else if (input$missing_method == "Create Missing Category" && is_categorical) {
+          # Create a new "Missing" category for categorical data
+          displayed[[var]] <- as.character(displayed[[var]])
+          train[[var]] <- as.character(train[[var]])
+          
+          displayed[[var]][is.na(displayed[[var]])] <- "Missing"
+          train[[var]][is.na(train[[var]])] <- "Missing"
+          
+          # Convert back to factor if original was factor
+          if (is.factor(displayed[[var]])) {
+            displayed[[var]] <- as.factor(displayed[[var]])
+            train[[var]] <- as.factor(train[[var]])
+          }
+          
+        } else if (input$missing_method == "Handle using Median" && !is_categorical) {
+          # Median imputation (numerical only)
+          median_val <- median(displayed[[var]], na.rm = TRUE)
+          displayed[[var]][is.na(displayed[[var]])] <- median_val
+          train[[var]][is.na(train[[var]])] <- median_val
+          
+        } else if (input$missing_method == "Handle using Mean" && !is_categorical) {
+          # Mean imputation (numerical only)
+          mean_val <- mean(displayed[[var]], na.rm = TRUE)
+          displayed[[var]][is.na(displayed[[var]])] <- mean_val
+          train[[var]][is.na(train[[var]])] <- mean_val
         }
         
+        # Update both datasets with the changes
         display_data(displayed)
         training_data(train)
         
+        # Show confirmation dialog
         showModal(
           modalDialog(
             title = "Missing Values Handled",
@@ -771,17 +779,18 @@ server <- function(input, output, session) {
             if (input$missing_method == "Row Deletion") {
               paste(missing_count, "rows were removed.")
             } else {
-              "The missing values have been replaced."
+              paste("Missing values have been replaced using the", 
+                    tolower(gsub("Handle using ", "", input$missing_method)), "method.")
             },
             easyClose = TRUE,
             footer = modalButton("Close")
           )
         )
       } else {
-        showNotification("No missing values in the selected variable.", type = "warning")
+        showNotification("No missing values found in the selected variable.", type = "warning")
       }
     }, error = function(e) {
-      showNotification(paste("Error:", e$message), type = "error")
+      showNotification(paste("Error handling missing values:", e$message), type = "error")
     })
   })
   

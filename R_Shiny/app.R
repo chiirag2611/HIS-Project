@@ -15,7 +15,7 @@ check_and_install_packages <- function(packages) {
 # List of required packages
 required_packages <- c("shiny", "shinydashboard", "shinyjs", "readxl", "DT", "plotly", 
                       "ROSE", "caret", "smotefamily", "reactable", "shinyjqui", 
-                      "shinycssloaders", "bslib", "dplyr", "ggplot2", "tidyr", "lubridate","missForest","mice")
+                      "shinycssloaders", "bslib")
 
 # Check and install missing packages
 check_and_install_packages(required_packages)
@@ -24,7 +24,7 @@ check_and_install_packages(required_packages)
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
-library(readxl)
+library(readxl)  
 library(DT)
 library(plotly)
 library(ROSE)
@@ -47,13 +47,12 @@ for (dir in required_dirs) {
   }
 }
 
-# Simply ensure the logo exists in the www directory
+# Check for logo file and copy if missing
 if (!file.exists("www/logo.png")) {
-  # Handle the missing logo case if needed
-  warning("Logo file not found in www directory")
+  warning("Logo file not found at www/logo.png - login page will show broken image")
 }
 
-# Enhanced Login UI
+# Enhanced Login UI with fixes
 login_ui <- fluidPage(
   useShinyjs(),
   tags$head(
@@ -90,33 +89,25 @@ login_ui <- fluidPage(
         max-width: 150px;
         height: auto;
       }
-      
+      .shiny-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 300px;
+      }
     ")),
+    # Simplified and more reliable enter key handler
     tags$script('
-      $(document).on("keyup", function(e) {
-        if(e.keyCode == 13) {
-          if($("#user").is(":focus") || $("#password").is(":focus")) {
-            $("#login_btn").click();
-          }
+      $(document).on("keydown", function(e) {
+        if(e.which == 13) {
+          Shiny.setInputValue("enter_pressed", Math.random(), {priority: "event"});
         }
-      });
-    '),
-    tags$script('
-      $(document).ready(function() {
-        $(document).on("keypress", function(e) {
-          if(e.which == 13 || e.keyCode == 13) {
-            if($("#user").is(":focus") || $("#password").is(":focus")) {
-              $("#login_btn").click();
-              return false;
-            }
-          }
-        });
       });
     ')
   ),
   div(class = "login-box",
       div(class = "login-logo", 
-      tags$img(src = "logo.png", alt = "Logo")
+          tags$img(src = "logo.png", alt = "Logo")
       ),
       div(class = "login-title", "🔐 Secure Login"),
       textInput("user", "Username", placeholder = "Enter username"),
@@ -150,13 +141,6 @@ check_source_files <- function() {
   return(TRUE)
 }
 
-# Check if source files exist before loading them
-if(check_source_files()) {
-  # Load actual UI & server from source files
-  source("R/ui.R", local = TRUE)
-  source("R/server.R", local = TRUE)
-}
-
 # Full app logic
 ui_combined <- function() {
   uiOutput("app_ui")
@@ -183,15 +167,42 @@ server_combined <- function(input, output, session) {
     }
   }, ignoreNULL = TRUE, ignoreInit = TRUE)
   
-  # Login handler
+  # Handle both button click and enter press
   observeEvent(input$login_btn, {
-    if (input$user == credentials$user && input$password == credentials$password) {
+    attempt_login()
+  })
+  
+  observeEvent(input$enter_pressed, {
+    attempt_login()
+  })
+  
+  # Consolidated login function
+  attempt_login <- function() {
+    req(input$user, input$password)
+    
+    # Trim whitespace and standardize case if needed
+    username <- trimws(input$user)
+    password <- trimws(input$password)
+    
+    # Debugging output (remove in production)
+    cat(sprintf("Login attempt - Username: '%s', Password: '%s'\n", username, password))
+    
+    if (identical(username, credentials$user) && identical(password, credentials$password)) {
       shinyjs::hide("login_error")
       user_authenticated(TRUE)
+      # Reset fields after successful login
+      updateTextInput(session, "user", value = "")
+      updateTextInput(session, "password", value = "")
     } else {
       shinyjs::show("login_error")
+      # Clear password field on failed attempt
+      updateTextInput(session, "password", value = "")
+      # Add shake animation to indicate error
+      shinyjs::runjs('
+        $(".login-box").effect("shake", { times: 2, distance: 5 }, 200);
+      ')
     }
-  })
+  }
   
   # Logout handler
   observeEvent(input$logout_btn, {
@@ -201,7 +212,14 @@ server_combined <- function(input, output, session) {
   
   output$app_ui <- renderUI({
     if (user_authenticated()) {
-      ui  # from ui.R
+      if(check_source_files()) {
+        # Load actual UI & server from source files
+        source("R/ui.R", local = TRUE)
+        source("R/server.R", local = TRUE)
+        return(ui)
+      } else {
+        return(tags$div("Error loading application UI"))
+      }
     } else {
       login_ui
     }
@@ -209,7 +227,11 @@ server_combined <- function(input, output, session) {
   
   observe({
     if (user_authenticated()) {
-      server(input, output, session)  # call your original server logic
+      if(check_source_files()) {
+        # Load server logic
+        source("R/server.R", local = TRUE)
+        server(input, output, session)
+      }
     }
   })
 }

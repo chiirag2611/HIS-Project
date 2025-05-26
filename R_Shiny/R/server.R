@@ -1382,6 +1382,52 @@ server <- function(input, output, session) {
             showNotification(paste("Skipping", var, "- not numeric"), type = "warning")
           }
         }
+      } else if (input$transformation_method == "Z-Score Normalization") {
+        # Z-Score standardization (mean = 0, std = 1)
+        for (var in selected_vars) {
+          if (is.numeric(data[[var]])) {
+            mean_val <- mean(data[[var]], na.rm = TRUE)
+            sd_val <- sd(data[[var]], na.rm = TRUE)
+            
+            # Check for zero standard deviation to avoid division by zero
+            if (sd_val > 0) {
+              data[[var]] <- (data[[var]] - mean_val) / sd_val
+              display[[var]] <- (display[[var]] - mean_val) / sd_val
+              transformed_vars[[var]] <- "Z-Score Normalization"
+            } else {
+              showNotification(paste("Skipping", var, "- no variation in data (standard deviation = 0)"), type = "warning")
+            }
+          } else {
+            showNotification(paste("Skipping", var, "- not numeric"), type = "warning")
+          }
+        }
+      } else if (input$transformation_method == "Log Transformation") {
+        # Log transformation for skewed data
+        for (var in selected_vars) {
+          if (is.numeric(data[[var]])) {
+            # Check for negative or zero values
+            min_val <- min(data[[var]], na.rm = TRUE)
+            offset <- 0
+            
+            # If there are negative or zero values, add an offset
+            if (min_val <= 0) {
+              offset <- abs(min_val) + 1  # Add 1 to ensure all values are positive
+              showNotification(paste("Adding offset of", offset, "to", var, "to handle negative/zero values"), type = "message")
+            }
+            
+            # Apply log transformation with offset if needed
+            data[[var]] <- log(data[[var]] + offset)
+            display[[var]] <- log(display[[var]] + offset)
+            
+            if (offset > 0) {
+              transformed_vars[[var]] <- paste("Log Transformation (offset:", offset, ")")
+            } else {
+              transformed_vars[[var]] <- "Log Transformation"
+            }
+          } else {
+            showNotification(paste("Skipping", var, "- not numeric"), type = "warning")
+          }
+        }
       }
       
       incProgress(0.6, detail = "Updating datasets...")

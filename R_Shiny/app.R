@@ -34,6 +34,7 @@ library(reactable)
 library(shinyjqui)
 library(shinycssloaders)
 library(bslib)
+library(shinyBS)
 
 # Static credentials
 credentials <- list(user = "HIS", password = "1234")

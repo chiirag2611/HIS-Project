@@ -329,8 +329,8 @@ ui <- dashboardPage(
             selectInput(
               inputId = "encoding_method",
               label = "Select Encoding Method:",
-              choices = c("Label Encoding", "One-Hot Encoding"),
-              selected = "Label Encoding"
+              choices = c("One-Hot Encoding","Label Encoding"),
+              selected = "One-Hot Encoding"
             ),
             div(
               style = "display: flex; justify-content: space-between; margin-top: 15px;",

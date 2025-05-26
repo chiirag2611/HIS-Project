@@ -55,7 +55,10 @@ if (!file.exists("www/logo.png")) {
 # Enhanced Login UI with fixes
 login_ui <- fluidPage(
   useShinyjs(),
+  # Add jQuery UI dependency
   tags$head(
+    tags$link(rel = "stylesheet", href = "https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css"),
+    tags$script(src = "https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"),
     tags$style(HTML("
       body {
         background-color: #f4f6f9;

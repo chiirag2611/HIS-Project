@@ -1481,6 +1481,18 @@ server <- function(input, output, session) {
             one_hot_display <- model.matrix(~ . - 1, data.frame(display_data_copy[[var]]))
             colnames(one_hot_display) <- paste(var, colnames(one_hot_display), sep = "_")
             
+            # Clean up column names for one-hot encoding - fixed pattern matching
+            for (i in 1:ncol(one_hot)) {
+              old_name <- colnames(one_hot)[i]
+              # Extract just the unique value by removing everything before the last dot
+              if (grepl("\\.\\.var\\.\\.+", old_name)) {
+                unique_value <- sub(".*\\.\\.var\\.\\.(.+)$", "\\1", old_name)
+                new_name <- paste0(var, "_", unique_value)
+                colnames(one_hot)[i] <- new_name
+                colnames(one_hot_display)[i] <- new_name
+              }
+            }
+            
             # Add the new columns and remove the original
             data <- cbind(data, one_hot)
             data[[var]] <- NULL

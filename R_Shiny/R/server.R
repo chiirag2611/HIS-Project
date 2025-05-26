@@ -34,8 +34,6 @@ server <- function(input, output, session) {
   # Reactive data to store the uploaded data 
   training_data <- reactiveVal(NULL)
   display_data <- reactiveVal(NULL)
-  y <- reactiveVal(NULL)
-  y_display <- reactiveVal(NULL)
   save_variable <- reactiveVal(NULL)
   dropped_features <- reactiveVal(list())
   
@@ -966,8 +964,6 @@ server <- function(input, output, session) {
       "Select at least one variable to see missing data percentage."
     }
   })
-  
-  current_missing_var <- reactiveVal(NULL)  # Holds the currently selected variable for missing value handling
   
   # UI for selecting a variable to handle missing values
   output$missing_var_ui <- renderUI({

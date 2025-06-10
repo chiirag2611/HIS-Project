@@ -11,7 +11,7 @@ library(reactable)
 library(shinyjs)
 library(shinyjqui)
 library(shinycssloaders)
-library(missForest)
+library(missForest) #these packages can give error.
 library(mice)
 library(shinyBS)
 
@@ -415,12 +415,11 @@ server <- function(input, output, session) {
       removeClass(id = "transform_var_ui", class = "operation-applied")
       removeClass(id = "encoding_var_ui", class = "operation-applied")
     }
-    
+
     removeModal()  # Close the modal after selection
   })
   
-  ## Dataset initial details
-  
+  # Dataset initial details
   # Observer to print file details
   observeEvent(display_data(), {
     req(display_data())  # Ensure the data is available
@@ -836,10 +835,10 @@ server <- function(input, output, session) {
     current_data <- display_data()
     
     numerical_vars <- names(current_data)[sapply(current_data, is.numeric)]
-    categorical_vars <- names(current_data)[sapply(current_data, function(x) is.factor(x) || is.character(x))]
+    categorical_variable <- names(current_data)[sapply(current_data, function(x) is.factor(x) || is.character(x))]
     
     updateSelectInput(session, "num_to_cat", choices = numerical_vars, selected = NULL)
-    updateSelectInput(session, "cat_to_num", choices = categorical_vars, selected = NULL)
+    updateSelectInput(session, "cat_to_num", choices = categorical_variable, selected = NULL)
   })
   
   # Convert Numerical to Categorical
@@ -1181,13 +1180,13 @@ server <- function(input, output, session) {
   # Dynamic selection for outliers
   output$outlier_var_ui <- renderUI({
     req(display_data())
-    numeric_vars <- names(display_data())[sapply(display_data(), is.numeric)]
+    numeric_variable <- names(display_data())[sapply(display_data(), is.numeric)]
     
-    if (length(numeric_vars) > 0) {
+    if (length(numeric_variable) > 0) {
       selectizeInput(
         inputId = "outlier_var", 
         label = "Select Numerical Variable(s):", 
-        choices = numeric_vars, 
+        choices = numeric_variable, 
         selected = NULL,
         multiple = TRUE
       )
@@ -1329,12 +1328,12 @@ server <- function(input, output, session) {
     
     data <- display_data()
     # Dynamically identify numerical columns excluding derived columns
-    numeric_vars <- names(data)[sapply(data, is.numeric)]
+    numeric_variable <- names(data)[sapply(data, is.numeric)]
     
     selectizeInput(
       inputId = "transform_var",
       label = "Select Numerical Variables for Transformation:",
-      choices = numeric_vars,
+      choices = numeric_variable,
       selected = NULL, # No variable selected by default
       multiple = TRUE
     )
@@ -1455,12 +1454,12 @@ server <- function(input, output, session) {
     
     data <- display_data()
     # Dynamically identify categorical columns in the current dataset
-    categorical_vars <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
+    categorical_variable <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
     
     selectizeInput(
       inputId = "encoding_var",
       label = "Select Categorical Variables for Encoding:",
-      choices = categorical_vars,
+      choices = categorical_variable,
       selected = NULL, # No variable selected by default
       multiple = TRUE
     )
@@ -1860,4 +1859,322 @@ server <- function(input, output, session) {
     
     return(summary_data)
   }, bordered = TRUE, hover = TRUE, spacing = "m", align = "l")
+
+ # Data Visualization 
+
+  observe({
+    req(display_data())
+    data <- display_data()
+    
+    # Get numeric and categorical variables
+    numeric_variable <- names(data)[sapply(data, is.numeric)]  # Numeric variables for histograms
+    categorical_variable <- names(data)[sapply(data, function(x) is.factor(x) || is.character(x) || 
+                                             (is.numeric(x) && length(unique(x)) <= 10))]  # Categorical variables
+    
+    # Combine numeric and categorical variables
+    all_vars <- unique(c(numeric_variable, categorical_variable))
+    
+    updateSelectInput(session, "x_var", choices = all_vars)
+    updateSelectInput(session, "x_var_bi", choices = names(data))  # For bivariate analysis
+    updateSelectInput(session, "y_var", choices = names(data))  # For bivariate analysis
+  })
+  
+  # Unidimensional Analysis - Histogram or Bar plot
+  output$histogram <- renderPlotly({
+    req(display_data(), input$x_var)
+    data <- display_data()
+    
+    # Get the selected variable
+    variable_data <- data[[input$x_var]]
+    
+    # Check if the variable is numeric or categorical
+    if (is.numeric(variable_data)) {
+      # If numeric, create a histogram
+      bin_range <- range(variable_data, na.rm = TRUE)
+      bin_width <- (bin_range[2] - bin_range[1]) / 10
+      
+      plot_ly(data, x = ~get(input$x_var), type = "histogram", autobinx = FALSE,
+              xbins = list(size = bin_width)) %>%
+        layout(
+          title = paste("Histogram of", input$x_var),
+          xaxis = list(title = input$x_var),
+          yaxis = list(title = "Count")
+        )
+    } else if (is.factor(variable_data) || is.character(variable_data) || 
+               (is.numeric(variable_data) && length(unique(variable_data)) <= 10)) {
+      # If categorical, create a bar plot
+      category_counts <- as.data.frame(table(variable_data))
+      colnames(category_counts) <- c("Category", "Count")  # Rename columns for clarity
+      
+      plot_ly(category_counts, x = ~Category, y = ~Count, type = "bar", 
+              marker = list(line = list(width = 2, color = 'rgb(255, 255, 255)'))) %>%
+        layout(
+          title = paste("Bar Plot of", input$x_var),
+          xaxis = list(title = input$x_var, tickangle = 45),
+          yaxis = list(title = "Count"),
+          barmode = "group"
+        )
+    }
+  })
+  
+  # Boxplot
+  output$boxplot <- renderPlotly({
+    req(display_data(), input$x_var)
+    data <- display_data()
+    plot_ly(data, y = ~get(input$x_var), type = "box")
+  })
+  
+  # Univariate analysis summary
+  output$univariate_analysis <- renderPrint({
+    req(display_data(), input$x_var)
+    data <- display_data()
+    summary(data[[input$x_var]])
+  })
+  
+  # Pie Chart
+  # Reactive check if the selected variable is categorical
+  is_categorical <- reactive({
+    req(display_data(), input$x_var)
+    data <- display_data()
+    variable <- data[[input$x_var]]
+    
+    # Treat as categorical if it's a factor, character, or numeric with few unique values
+    is.factor(variable) || is.character(variable) || 
+      (is.numeric(variable) && length(unique(variable)) <= 10)
+  })
+  
+  # Send the result of the categorical check to the UI
+  output$is_categorical <- reactive({
+    is_categorical()
+  })
+  # Required for conditionalPanel
+  outputOptions(output, "is_categorical", suspendWhenHidden = FALSE)
+  
+  # Render the Pie Chart only for categorical variables
+  output$pie_chart <- renderPlot({
+    req(display_data(), is_categorical())
+    data <- display_data()
+    variable <- data[[input$x_var]]
+    
+    # Convert numeric categorical variables to factors for better pie chart display
+    if (is.numeric(variable)) {
+      variable <- as.factor(variable)
+    }
+    
+    pie(table(variable), main = "Pie Chart", col = rainbow(length(unique(variable))))
+  })
+  
+  
+  
+  # Bidimensional Analysis
+  
+  
+  
+  # Correlation plot
+  output$bivariate_analysis <- renderPlotly({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    plot_ly(data, x = ~get(input$x_var_bi), y = ~get(input$y_var), type = "scatter", mode = "markers")
+  })
+  # correlation coefficient 
+  # Reactive check if both variables are numeric
+  is_both_numeric <- reactive({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    is.numeric(data[[input$x_var_bi]]) && is.numeric(data[[input$y_var]])
+  })
+  
+  # Send the result of numeric check to the UI
+  output$show_correlation <- reactive({
+    is_both_numeric()
+  })
+  outputOptions(output, "show_correlation", suspendWhenHidden = FALSE)
+  
+  # Render correlation plot with regression line
+  output$bivariate_analysis <- renderPlotly({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    # If both variables are numeric, add regression line
+    if (is_both_numeric()) {
+      ggplotly(
+        ggplot(data, aes(x = x, y = y)) +
+          geom_point(color = "blue", alpha = 0.6) +
+          geom_smooth(method = "lm", color = "red", se = FALSE) +
+          labs(
+            title = "Correlation Plot with Regression Line",
+            x = input$x_var_bi,
+            y = input$y_var
+          ) +
+          theme_minimal()
+      )
+    } else {
+      # Default scatter plot for non-numeric combinations
+      plot_ly(data, x = ~x, y = ~y, type = "scatter", mode = "markers")
+    }
+  })
+  
+  # Calculate and display the correlation coefficient
+  output$correlation_coefficient <- renderText({
+    req(is_both_numeric())
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    corr <- cor(x, y, use = "complete.obs")
+    paste("Correlation Coefficient (r):", round(corr, 3))
+  })
+  
+  
+  # Correlation matrix
+  output$correlation_matrix_plot <- renderPlot({
+    req(display_data())
+    numeric_data <- display_data()[, sapply(display_data(), is.numeric)]
+    corr <- cor(numeric_data, use = "complete.obs")
+    corrplot::corrplot(corr, method = "color", type = "upper")
+  })
+  
+  #calculate the coefficient between quantitative and qualitative 
+  # Reactive check if X is qualitative and Y is quantitative
+  is_qualitative_quantitative <- reactive({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    (is.factor(data[[input$x_var_bi]]) || is.character(data[[input$x_var_bi]])) &&
+      is.numeric(data[[input$y_var]])
+  })
+  
+  # Send the result of the qualitative/quantitative check to the UI
+  output$show_correlation_ratio <- reactive({
+    is_qualitative_quantitative()
+  })
+  outputOptions(output, "show_correlation_ratio", suspendWhenHidden = FALSE)
+  
+  # Calculate and render the correlation ratio c_{Y|X}
+  output$correlation_ratio <- renderText({
+    req(is_qualitative_quantitative())
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    # Compute the overall mean of Y
+    y_bar <- mean(y, na.rm = TRUE)
+    
+    # Compute the total variance of Y
+    s2_y <- mean((y - y_bar)^2, na.rm = TRUE)
+    
+    # Group data by levels of X
+    grouped_data <- split(y, x)
+    
+    # Compute explained variance (s2_E) and residual variance (s2_R)
+    s2_E <- sum(sapply(grouped_data, function(group) {
+      n_l <- length(group)
+      y_bar_l <- mean(group, na.rm = TRUE)
+      n_l * (y_bar_l - y_bar)^2
+    })) / length(y)
+    
+    s2_R <- sum(sapply(grouped_data, function(group) {
+      n_l <- length(group)
+      var_l <- var(group, na.rm = TRUE)
+      n_l * var_l
+    })) / length(y)
+    
+    # Correlation ratio
+    c_y_given_x <- sqrt(s2_E / s2_y)
+    
+    paste("Correlation Ratio (c_Y|X):", round(c_y_given_x, 3))
+  })
+  
+  # Boxplot (parallel)
+  output$boxplot_parallel <- renderPlot({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    validate(
+      need(is.numeric(y), "Y Variable must be numeric."),
+      need(is.factor(x) || is.character(x), "X Variable must be categorical.")
+    )
+    
+    ggplot(data, aes(x = as.factor(x), y = y)) +
+      geom_boxplot(fill = "orange", alpha = 0.7) +
+      theme_minimal() +
+      labs(title = "Parallel Boxplots", x = input$x_var_bi, y = input$y_var)
+  })
+  
+  # Bar Plot (Column Profiles)
+  output$bar_plot_profiles <- renderPlot({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    validate(
+      need(is.factor(x) || is.character(x), "X Variable must be categorical."),
+      need(is.factor(y) || is.character(y), "Y Variable must be categorical.")
+    )
+    
+    contingency_table <- table(x, y)
+    col_profiles <- prop.table(contingency_table, margin = 2)
+    col_profiles_df <- as.data.frame(as.table(col_profiles))
+    colnames(col_profiles_df) <- c("X", "Y", "Proportion")
+    
+    ggplot(col_profiles_df, aes(x = X, y = Proportion, fill = Y)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      theme_minimal() +
+      labs(
+        title = "Diagramme en barres des profils-colonnes",
+        x = input$x_var_bi,
+        y = "Proportion",
+        fill = input$y_var
+      ) +
+      scale_y_continuous(labels = scales::percent)
+  })
+  
+  ## contingency table and cramer coefficent 
+  # Reactive check if both variables are qualitative (including label-encoded)
+  is_qualitative_qualitative <- reactive({
+    req(display_data(), input$x_var_bi, input$y_var)
+    data <- display_data()
+    
+    is_qualitative <- function(var) {
+      is.factor(var) || is.character(var) || (is.numeric(var) && length(unique(var)) <= 10)
+    }
+    
+    is_qualitative(data[[input$x_var_bi]]) && is_qualitative(data[[input$y_var]])
+  })
+  
+  # Contingency table
+  output$contingency_table <- renderTable({
+    req(is_qualitative_qualitative())
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    table(x, y)
+  }, rownames = TRUE)
+  
+  # Cramér's V calculation
+  output$cramers_v <- renderText({
+    req(is_qualitative_qualitative())
+    data <- display_data()
+    x <- data[[input$x_var_bi]]
+    y <- data[[input$y_var]]
+    
+    # Create contingency table
+    contingency_table <- table(x, y)
+    
+    # Compute Cramér's V
+    chi2_stat <- chisq.test(contingency_table, correct = FALSE)$statistic  # Chi-squared statistic
+    n <- sum(contingency_table)  # Total number of observations
+    min_dim <- min(nrow(contingency_table), ncol(contingency_table)) - 1  # Min(rows, cols) - 1
+    
+    cramers_v <- sqrt(as.numeric(chi2_stat) / (n * min_dim))  # Cramér's V formula
+    
+    paste("Cramér's V:", round(cramers_v, 3))
+  })
+
 } # End of server function

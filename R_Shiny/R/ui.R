@@ -7,6 +7,7 @@ library(reactable)
 library(shinyjs)
 library(shinyjqui)
 library(shinyBS)
+library(corrplot)
 
 ui <- dashboardPage(
   dashboardHeader(title = "Data Pre-Processing for Machine Learning", titleWidth = 500,
@@ -25,7 +26,8 @@ ui <- dashboardPage(
     width = 200,
     sidebarMenu(
       menuItem("Load Data", tabName = "load_data", icon = icon("file-upload", lib = "font-awesome")),
-      menuItem("PreProcessing", tabName = "preprocessing", icon = icon("cogs"))
+      menuItem("PreProcessing", tabName = "preprocessing", icon = icon("cogs")),
+      menuItem("Data Visualization", tabName = "visualization", icon = icon("chart-bar"))
     )
   ),
   
@@ -364,16 +366,77 @@ ui <- dashboardPage(
             )
           )
         )
+      ),
+      # Data Visualization tab
+      tabItem(
+        tabName = "visualization",
+        fluidRow(
+          # Box for single variable selection
+          box(
+            title = "Variable Selection for Univariate Analysis", solidHeader = TRUE, width = 6,
+            selectInput("x_var", "Variable:", choices = NULL)
+          ),
+          # Box for two-variable selection
+          box(
+            title = "Variable Selection for Bivariate Analysis", solidHeader = TRUE, width = 6,
+            selectInput("x_var_bi", "X Variable:", choices = NULL),
+            selectInput("y_var", "Y Variable:", choices = NULL)
+          )
+        ),
+        fluidRow(
+          # Unidimensional analysis box
+          box(
+            title = "Unidimensional Analysis", solidHeader = TRUE, width = 6,
+            tabsetPanel(
+              tabPanel(
+                "Histogramme", 
+                numericInput("binwidth_input", "Binwidth:", value = 0.2, min = 0.01, step = 0.01),
+                plotlyOutput("histogram")
+              ),
+              tabPanel("Box Plot", plotlyOutput("boxplot")),
+               # Add a Pie Chart tab, dynamically controlled
+              tabPanel(
+                "Pie Chart",
+                conditionalPanel(
+                  condition = "output.is_categorical === true", # Show only if variable is categorical
+                  plotOutput("pie_chart", height = 500, width = 600)
+                )
+              )
+            )
+          ),
+          # Bidimensional analysis box
+          box(
+            title = "Bidimensional Analysis", solidHeader = TRUE, width = 6,
+            tabsetPanel(
+              tabPanel(
+                "Correlation Plot",
+                plotlyOutput("bivariate_analysis"),
+                conditionalPanel(
+                  condition = "output.show_correlation === true",  # Show only for numeric variables
+                  h4(textOutput("correlation_coefficient"), style = "color: red; margin-top: 10px;")
+                )
+              ),
+              tabPanel("Correlation Matrix", plotOutput("correlation_matrix_plot")),
+              tabPanel(
+                "Box Plot",
+                plotOutput("boxplot_parallel"),
+                conditionalPanel(
+                  condition = "output.show_correlation_ratio === true",  # Show only for quantitative vs qualitative
+                  h4(textOutput("correlation_ratio"), style = "color: blue; margin-top: 10px;")
+                )
+              )
+            )
+          )
+        )
       )
     ),
-    
     # Column Selection Modal
     bsModal(
       id = "columnSelectionModal",
       title = "Select Columns for Operation",
       trigger = "column_selection_trigger",
       size = "large",
-      fluidRow(
+      fluidRow (
         column(
           width = 3,
           h4("Quick Actions"),

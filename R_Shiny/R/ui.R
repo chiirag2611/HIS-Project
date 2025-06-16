@@ -10,7 +10,7 @@ library(shinyBS)
 library(corrplot)
 
 ui <- dashboardPage(
-  dashboardHeader(title = "Data Pre-Processing for Machine Learning", titleWidth = 500,
+  dashboardHeader(title = "📊DataPrepHIS", titleWidth = 200,
     tags$li(
       class = "dropdown",
       actionButton(

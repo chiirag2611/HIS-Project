@@ -389,8 +389,8 @@ ui <- dashboardPage(
             title = "Unidimensional Analysis", solidHeader = TRUE, width = 6,
             tabsetPanel(
               tabPanel(
-                "Histogramme", 
-                numericInput("binwidth_input", "Binwidth:", value = 0.2, min = 0.01, step = 0.01),
+                "Histogram", 
+                #numericInput("binwidth_input", "Binwidth:", value = 0.2, min = 0.01, step = 0.01),
                 plotlyOutput("histogram")
               ),
               tabPanel("Box Plot", plotlyOutput("boxplot")),

@@ -1964,8 +1964,6 @@ server <- function(input, output, session) {
     pie(table(variable), main = "Pie Chart", col = rainbow(length(unique(variable))))
   })
   
-  
-  
   # Bidimensional Analysis
   
   
@@ -2104,77 +2102,4 @@ server <- function(input, output, session) {
       theme_minimal() +
       labs(title = "Parallel Boxplots", x = input$x_var_bi, y = input$y_var)
   })
-  
-  # Bar Plot (Column Profiles)
-  output$bar_plot_profiles <- renderPlot({
-    req(display_data(), input$x_var_bi, input$y_var)
-    data <- display_data()
-    x <- data[[input$x_var_bi]]
-    y <- data[[input$y_var]]
-    
-    validate(
-      need(is.factor(x) || is.character(x), "X Variable must be categorical."),
-      need(is.factor(y) || is.character(y), "Y Variable must be categorical.")
-    )
-    
-    contingency_table <- table(x, y)
-    col_profiles <- prop.table(contingency_table, margin = 2)
-    col_profiles_df <- as.data.frame(as.table(col_profiles))
-    colnames(col_profiles_df) <- c("X", "Y", "Proportion")
-    
-    ggplot(col_profiles_df, aes(x = X, y = Proportion, fill = Y)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      theme_minimal() +
-      labs(
-        title = "Diagramme en barres des profils-colonnes",
-        x = input$x_var_bi,
-        y = "Proportion",
-        fill = input$y_var
-      ) +
-      scale_y_continuous(labels = scales::percent)
-  })
-  
-  ## contingency table and cramer coefficent 
-  # Reactive check if both variables are qualitative (including label-encoded)
-  is_qualitative_qualitative <- reactive({
-    req(display_data(), input$x_var_bi, input$y_var)
-    data <- display_data()
-    
-    is_qualitative <- function(var) {
-      is.factor(var) || is.character(var) || (is.numeric(var) && length(unique(var)) <= 10)
-    }
-    
-    is_qualitative(data[[input$x_var_bi]]) && is_qualitative(data[[input$y_var]])
-  })
-  
-  # Contingency table
-  output$contingency_table <- renderTable({
-    req(is_qualitative_qualitative())
-    data <- display_data()
-    x <- data[[input$x_var_bi]]
-    y <- data[[input$y_var]]
-    
-    table(x, y)
-  }, rownames = TRUE)
-  
-  # Cramér's V calculation
-  output$cramers_v <- renderText({
-    req(is_qualitative_qualitative())
-    data <- display_data()
-    x <- data[[input$x_var_bi]]
-    y <- data[[input$y_var]]
-    
-    # Create contingency table
-    contingency_table <- table(x, y)
-    
-    # Compute Cramér's V
-    chi2_stat <- chisq.test(contingency_table, correct = FALSE)$statistic  # Chi-squared statistic
-    n <- sum(contingency_table)  # Total number of observations
-    min_dim <- min(nrow(contingency_table), ncol(contingency_table)) - 1  # Min(rows, cols) - 1
-    
-    cramers_v <- sqrt(as.numeric(chi2_stat) / (n * min_dim))  # Cramér's V formula
-    
-    paste("Cramér's V:", round(cramers_v, 3))
-  })
-
 } # End of server function

@@ -14,6 +14,8 @@ library(shinycssloaders)
 library(missForest) #these packages can give error.
 library(mice)
 library(shinyBS)
+library(corrplot)
+library(viridis)
 library(ggplot2)
 
 
@@ -87,6 +89,18 @@ server <- function(input, output, session) {
     } else if (current_operation() == "encoding") {
       previous_selected_cols(input$encoding_var)
       modal_selected_cols(input$encoding_var)
+    } else if (current_operation() == "visualization_univar") {
+      previous_selected_cols(input$x_var)
+      modal_selected_cols(input$x_var)
+      current_operation("visualization_univar")
+    } else if (current_operation() == "visualization_x_var") {
+      previous_selected_cols(input$x_var_bi)
+      modal_selected_cols(input$x_var_bi)
+      current_operation("visualization_x_var")
+    } else if (current_operation() == "visualization_y_var") {
+      previous_selected_cols(input$y_var)
+      modal_selected_cols(input$y_var)
+      current_operation("visualization_y_var")
     } else {
       previous_selected_cols(character(0))
       modal_selected_cols(character(0))  # Default to empty
@@ -216,13 +230,19 @@ server <- function(input, output, session) {
     }
     else if (current_operation() == "encoding") {
       updateSelectInput(session, "encoding_var", selected = selected_cols)
+    } else if (current_operation() == "visualization_univar") {
+      updateSelectInput(session, "x_var", selected = selected_cols)
+    } else if (current_operation() == "visualization_x_var") {
+      updateSelectInput(session, "x_var_bi", selected = selected_cols)
+    } else if (current_operation() == "visualization_y_var") {
+      updateSelectInput(session, "y_var", selected = selected_cols)
     }
     
     # Show notification
     if (length(selected_cols) > 0) {
       showNotification(paste("Selected", length(selected_cols), "columns"), type = "message")
     }
-    
+
     toggleModal(session, "columnSelectionModal", toggle = "close")
   })
   # Modal quick actions
@@ -284,6 +304,12 @@ server <- function(input, output, session) {
     }
     else if (current_operation() == "encoding") {
       updateSelectInput(session, "encoding_var", selected = previous_selected_cols())
+    } else if (current_operation() == "visualization_univar") {
+      updateSelectInput(session, "x_var", selected = previous_selected_cols())
+    } else if (current_operation() == "visualization_x_var") {
+      updateSelectInput(session, "x_var_bi", selected = previous_selected_cols())
+    } else if (current_operation() == "visualization_y_var") {
+      updateSelectInput(session, "y_var", selected = previous_selected_cols())
     }
     
     # Close the modal without updating any selections
@@ -946,9 +972,19 @@ server <- function(input, output, session) {
     req(input$missing_var, display_data())  # Ensure variable selection and data availability
     
     if (length(input$missing_var) == 1) {
-      var <- display_data()[[input$missing_var]]  # Extract the selected variable's column
-      percent <- sum(is.na(var)) / length(var) * 100  # Compute the percentage of missing values
-      paste("Missing Percent:", round(percent, 2), "%")  # Format and return the result as text
+      data <- display_data()
+      var_name <- input$missing_var
+      var <- data[[var_name]]
+      
+      # Use a consistent definition of missing values for both numeric and categorical data
+      missing_mask <- is.na(var) | 
+                     var == "" | 
+                     var == "NA" |
+                     var == "NULL"
+    
+      # Compute the percentage of missing values
+      percent <- sum(missing_mask) / length(var) * 100
+      paste("Missing Percent:", round(percent, 2), "%")
     } else if (length(input$missing_var) > 1) {
       # For multiple variables, show aggregate stats
       data <- display_data()
@@ -956,7 +992,15 @@ server <- function(input, output, session) {
       missing_count <- 0
       
       for (var_name in input$missing_var) {
-        missing_count <- missing_count + sum(is.na(data[[var_name]]))
+        var <- data[[var_name]]
+        
+        # Use a consistent definition of missing values
+        missing_mask <- is.na(var) | 
+                       var == "" | 
+                       var == "NA" |
+                       var == "NULL"
+      
+        missing_count <- missing_count + sum(missing_mask)
       }
       
       percent <- missing_count / total_cells * 100
@@ -1061,41 +1105,34 @@ server <- function(input, output, session) {
     total_missing_count <- 0
     processed_vars <- c()
     
+    # Get copies of the data for manipulation
+    displayed <- display_data()
+    train <- training_data()
+    
     # Process each selected variable
     for (var in input$missing_var) {
       tryCatch({
-        displayed <- display_data()
-        train <- training_data()
-        
         # Skip if the variable doesn't exist
         if (!var %in% names(displayed)) {
           showNotification(paste("Variable", var, "not found in dataset"), type = "error")
           next
         }
         
-        # Count missing values, considering various representations of missingness
-        missing_count <- sum(is.na(displayed[[var]]) | 
-                            displayed[[var]] == "" | 
-                            displayed[[var]] == "NA" |
-                            displayed[[var]] == "NULL")
-        
-      # Add visual indicator that operation was applied
-    addClass(id = "missing_var_ui", class = "operation-applied")
-    
-    # Update preprocessing summary
-    preprocessing_ops$missing_values <- list(
-      method = input$missing_method,
-      variables = paste(input$missing_var, collapse = ", "),
-      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-    )
-        
+        # Create a consistent missing value mask for all cases
+        missing_mask <- is.na(displayed[[var]]) | 
+                     displayed[[var]] == "" | 
+                     displayed[[var]] == "NA" |
+                     displayed[[var]] == "NULL"
+      
+        missing_count <- sum(missing_mask)
+      
         if (missing_count > 0) {
           # Determine if the variable is categorical or numerical
           is_categorical <- is.factor(displayed[[var]]) || is.character(displayed[[var]])
           
           if (input$missing_method == "Row Deletion") {
             # Remove rows with missing values in the selected variable
-            rows_to_keep <- !is.na(displayed[[var]])
+            rows_to_keep <- !missing_mask
             displayed <- displayed[rows_to_keep, ]
             train <- train[rows_to_keep, ]
             
@@ -1103,14 +1140,17 @@ server <- function(input, output, session) {
             # Mode imputation works for both categorical and numerical data
             if (is_categorical) {
               # For categorical data, get the most frequent category
-              mode_val <- names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1])
-              displayed[[var]][is.na(displayed[[var]])] <- mode_val
-              train[[var]][is.na(train[[var]])] <- mode_val
+              # Exclude missing values when calculating mode
+              mode_val <- names(sort(table(displayed[[var]][!missing_mask]), decreasing = TRUE)[1])
+              
+              # Apply the same mask for replacement in both datasets
+              displayed[[var]][missing_mask] <- mode_val
+              train[[var]][missing_mask] <- mode_val
             } else {
               # For numerical data
               mode_val <- as.numeric(names(sort(table(displayed[[var]], useNA = "no"), decreasing = TRUE)[1]))
-              displayed[[var]][is.na(displayed[[var]])] <- mode_val
-              train[[var]][is.na(train[[var]])] <- mode_val
+              displayed[[var]][missing_mask] <- mode_val
+              train[[var]][missing_mask] <- mode_val
             }
             
           } else if (input$missing_method == "Create Missing Category" && is_categorical) {
@@ -1118,8 +1158,9 @@ server <- function(input, output, session) {
             displayed[[var]] <- as.character(displayed[[var]])
             train[[var]] <- as.character(train[[var]])
             
-            displayed[[var]][is.na(displayed[[var]])] <- "Missing"
-            train[[var]][is.na(train[[var]])] <- "Missing"
+            # Use the mask for consistent replacement
+            displayed[[var]][missing_mask] <- "Missing"
+            train[[var]][missing_mask] <- "Missing"
             
             # Convert back to factor if original was factor
             if (is.factor(displayed[[var]])) {
@@ -1130,31 +1171,42 @@ server <- function(input, output, session) {
           } else if (input$missing_method == "Handle using Median" && !is_categorical) {
             # Median imputation (numerical only)
             median_val <- median(displayed[[var]], na.rm = TRUE)
-            displayed[[var]][is.na(displayed[[var]])] <- median_val
-            train[[var]][is.na(train[[var]])] <- median_val
+            displayed[[var]][missing_mask] <- median_val
+            train[[var]][missing_mask] <- median_val
             
           } else if (input$missing_method == "Handle using Mean" && !is_categorical) {
             # Mean imputation (numerical only)
             mean_val <- mean(displayed[[var]], na.rm = TRUE)
-            displayed[[var]][is.na(displayed[[var]])] <- mean_val
-            train[[var]][is.na(train[[var]])] <- mean_val
+            displayed[[var]][missing_mask] <- mean_val
+            train[[var]][missing_mask] <- mean_val
           }
           
           # Update tracking variables
           total_processed <- total_processed + 1
           total_missing_count <- total_missing_count + missing_count
           processed_vars <- c(processed_vars, var)
-          
-          # Update both datasets with the changes
-          #display_data(displayed)
-          #training_data(train)
-          update_datasets(displayed, train, session)
         } else {
           showNotification(paste("No missing values found in", var), type = "warning")
         }
       }, error = function(e) {
         showNotification(paste("Error handling missing values in", var, ":", e$message), type = "error")
       })
+    }
+    
+    # Add visual indicator that operation was applied
+    addClass(id = "missing_var_ui", class = "operation-applied")
+    
+    # Update preprocessing summary
+    preprocessing_ops$missing_values <- list(
+      method = input$missing_method,
+      variables = paste(input$missing_var, collapse = ", "),
+      timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    )
+    
+    # Update both datasets only once, after processing all variables
+    if (total_processed > 0) {
+      display_data(displayed)
+      training_data(train)
     }
     
     # Show summary confirmation dialog if any variables were processed
@@ -1882,49 +1934,74 @@ server <- function(input, output, session) {
   })
   
   # Unidimensional Analysis - Histogram or Bar plot
-  output$histogram <- renderPlotly({
-    req(display_data(), input$x_var)
-    data <- display_data()
-    
-    # Get the selected variable
-    variable_data <- data[[input$x_var]]
-    
-    # Check if the variable is numeric or categorical
-    if (is.numeric(variable_data)) {
-      # If numeric, create a histogram
-      bin_range <- range(variable_data, na.rm = TRUE)
-      bin_width <- (bin_range[2] - bin_range[1]) / 10
-      
-      plot_ly(data, x = ~get(input$x_var), type = "histogram", autobinx = FALSE,
-              xbins = list(size = bin_width)) %>%
-        layout(
-          title = paste("Histogram of", input$x_var),
-          xaxis = list(title = input$x_var),
-          yaxis = list(title = "Count")
-        )
-    } else if (is.factor(variable_data) || is.character(variable_data) || 
-               (is.numeric(variable_data) && length(unique(variable_data)) <= 10)) {
-      # If categorical, create a bar plot
-      category_counts <- as.data.frame(table(variable_data))
-      colnames(category_counts) <- c("Category", "Count")  # Rename columns for clarity
-      
-      plot_ly(category_counts, x = ~Category, y = ~Count, type = "bar", 
-              marker = list(line = list(width = 2, color = 'rgb(255, 255, 255)'))) %>%
-        layout(
-          title = paste("Bar Plot of", input$x_var),
-          xaxis = list(title = input$x_var, tickangle = 45),
-          yaxis = list(title = "Count"),
-          barmode = "group"
-        )
-    }
-  })
+output$histogram <- renderPlotly({
+  req(display_data(), input$x_var)
+  data <- display_data()
   
-  # Boxplot
-  output$boxplot <- renderPlotly({
-    req(display_data(), input$x_var)
-    data <- display_data()
-    plot_ly(data, y = ~get(input$x_var), type = "box")
-  })
+  # Get the selected variable
+  variable_data <- data[[input$x_var]]
+  
+  # Check if the variable is numeric or categorical
+  if (is.numeric(variable_data)) {
+    # If numeric, create a histogram with better auto-scaling
+    bin_range <- range(variable_data, na.rm = TRUE)
+    bin_width <- (bin_range[2] - bin_range[1]) / 10
+    
+    p <- plot_ly(data, x = ~get(input$x_var), type = "histogram", 
+                autobinx = FALSE,
+                xbins = list(size = bin_width)) %>%
+      layout(
+        title = paste("Histogram of", input$x_var),
+        xaxis = list(title = input$x_var, autorange = TRUE),
+        yaxis = list(title = "Count", autorange = TRUE),
+        autosize = TRUE,
+        margin = list(l = 50, r = 50, b = 100, t = 100, pad = 4)
+      ) %>%
+      config(responsive = TRUE, displayModeBar = TRUE, 
+             modeBarButtonsToAdd = list("resetScale2d"))
+    
+    # Force chart to autoscale on initial render
+    p$x$layout$xaxis$autorange <- TRUE
+    p$x$layout$yaxis$autorange <- TRUE
+    return(p)
+    
+  } else if (is.factor(variable_data) || is.character(variable_data) || 
+             (is.numeric(variable_data) && length(unique(variable_data)) <= 10)) {
+    # If categorical, create a bar plot with improved scaling
+    category_counts <- as.data.frame(table(variable_data))
+    colnames(category_counts) <- c("Category", "Count")  # Rename columns for clarity
+    
+    plot_ly(category_counts, x = ~Category, y = ~Count, type = "bar", 
+            marker = list(line = list(width = 2, color = 'rgb(255, 255, 255)'))) %>%
+      layout(
+        title = paste("Bar Plot of", input$x_var),
+        xaxis = list(title = input$x_var, tickangle = 45, autorange = TRUE),
+        yaxis = list(title = "Count", autorange = TRUE),
+        barmode = "group",
+        autosize = TRUE,
+        margin = list(l = 50, r = 50, b = 100, t = 100, pad = 4)
+      ) %>%
+      config(responsive = TRUE, displayModeBar = TRUE, 
+             modeBarButtonsToAdd = list("resetScale2d"))
+  }
+})
+
+# Boxplot
+output$boxplot <- renderPlotly({
+  req(display_data(), input$x_var)
+  data <- display_data()
+  
+  # Create the boxplot with proper axis labels
+  plot_ly(data, y = ~get(input$x_var), type = "box") %>%
+    layout(
+      title = paste("Box Plot of", input$x_var),
+      xaxis = list(title = ""),
+      yaxis = list(title = input$x_var),
+      autosize = TRUE,
+      margin = list(l = 50, r = 50, b = 50, t = 100, pad = 4)
+    ) %>%
+    config(responsive = TRUE, displayModeBar = TRUE)
+})
   
   # Univariate analysis summary
   output$univariate_analysis <- renderPrint({
@@ -1943,6 +2020,7 @@ server <- function(input, output, session) {
     # Treat as categorical if it's a factor, character, or numeric with few unique values
     is.factor(variable) || is.character(variable) || 
       (is.numeric(variable) && length(unique(variable)) <= 10)
+ 
   })
   
   # Send the result of the categorical check to the UI
@@ -1953,18 +2031,61 @@ server <- function(input, output, session) {
   outputOptions(output, "is_categorical", suspendWhenHidden = FALSE)
   
   # Render the Pie Chart only for categorical variables
-  output$pie_chart <- renderPlot({
-    req(display_data(), is_categorical())
-    data <- display_data()
-    variable <- data[[input$x_var]]
+ output$pie_chart <- renderPlot({
+   req(display_data(), input$x_var)
+  data <- display_data()
+  variable <- data[[input$x_var]]
+  
+  # Only proceed if it's categorical
+  if(is_categorical()) {
+    # Create a clean data frame for the pie chart
+    pie_data <- as.data.frame(table(variable))
+    colnames(pie_data) <- c("Category", "Count")
     
-    # Convert numeric categorical variables to factors for better pie chart display
-    if (is.numeric(variable)) {
-      variable <- as.factor(variable)
+    # Calculate percentages
+    pie_data$Percentage <- round(pie_data$Count / sum(pie_data$Count) * 100, 1)
+    
+    # Add percentage labels to the categories
+    pie_data$Label <- paste0(pie_data$Category, "\n(", pie_data$Percentage, "%)")
+    
+    # Check the number of categories and use an appropriate color palette
+    n_categories <- nrow(pie_data)
+    
+    # Create color palette based on number of categories
+    if(n_categories <= 12) {
+      # Use RColorBrewer palette for 12 or fewer categories
+      color_scale <- scale_fill_brewer(palette = "Set3")
+    } else {
+      # For more than 12 categories, use a different approach
+      # Option 1: Use viridis palette which handles many colors well
+      color_scale <- scale_fill_viridis_d()
+      
+      # Option 2: Use a manually generated color palette
+      # colors <- colorRampPalette(brewer.pal(8, "Set3"))(n_categories)
+      # color_scale <- scale_fill_manual(values = colors)
     }
     
-    pie(table(variable), main = "Pie Chart", col = rainbow(length(unique(variable))))
-  })
+    # Create the pie chart using ggplot2 for better control
+    ggplot(pie_data, aes(x = "", y = Count, fill = Category)) +
+      geom_bar(stat = "identity", width = 1) +
+      coord_polar("y", start = 0) +
+      theme_minimal() +
+      theme(
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank(),
+        plot.margin = margin(0, 0, 0, 0, "pt")
+      ) +
+      labs(title = paste("Pie Chart of", input$x_var)) +
+      geom_text(aes(label = Label), 
+                position = position_stack(vjust = 0.5)) +
+      color_scale
+  }
+}, height = function() { 400 }, width = function() { 
+  # Dynamic width based on the session's window size
+  session$clientData$output_pie_chart_width 
+})
   
   # Bidimensional Analysis
   
@@ -2029,11 +2150,18 @@ server <- function(input, output, session) {
   
   # Correlation matrix
   output$correlation_matrix_plot <- renderPlot({
-    req(display_data())
-    numeric_data <- display_data()[, sapply(display_data(), is.numeric)]
+  req(display_data())
+  data <- display_data()
+  numeric_data <- data[, sapply(data, is.numeric), drop = FALSE]
+  
+  if(ncol(numeric_data) < 2) {
+    plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+    text(0, 0, "At least 2 numeric variables needed for correlation matrix", cex = 1.2)
+  } else {
     corr <- cor(numeric_data, use = "complete.obs")
     corrplot::corrplot(corr, method = "color", type = "upper")
-  })
+  }
+})
   
   #calculate the coefficient between quantitative and qualitative 
   # Reactive check if X is qualitative and Y is quantitative
@@ -2102,26 +2230,30 @@ server <- function(input, output, session) {
       theme_minimal() +
       labs(title = "Parallel Boxplots", x = input$x_var_bi, y = input$y_var)
   })
+  
+  # Initialize reactive value for correlation matrix
+correlation_data <- reactiveVal(NULL)
 
-  # Handling the Download Button
-  output$download_report <- downloadHandler(
-  filename = function() {
-    paste("HIS_Report_", Sys.Date(), ".html", sep = "")
-  },
-  content = function(file) {
-    tempReport <- file.path(tempdir(), "report_generator.Rmd")
-    file.copy("report_generator.Rmd", tempReport, overwrite = TRUE)
-
-    # Use your processed summary data here
-    summary_df_final <- generate_summary(display_data())
-
-    rmarkdown::render(
-      input = tempReport,
-      output_file = file,
-      params = list(summary_df_final = summary_df_final),
-      envir = new.env(parent = globalenv())
-    )
+# Update correlation data in the appropriate observer
+observe({
+  req(display_data())
+  data <- display_data()
+  
+  # Cache numeric variables and correlations
+  if(any(sapply(data, is.numeric))) {
+    numeric_data <- data[, sapply(data, is.numeric), drop = FALSE]
+    if(ncol(numeric_data) >= 2) {
+      # Compute and cache correlation matrix
+      correlation_matrix <- cor(numeric_data, use = "complete.obs")
+      correlation_data(correlation_matrix)
+    }
   }
-  )
+})
 
-} # End of server function
+# Then use correlation_data() in your visualization outputs
+output$correlation_matrix_plot <- renderPlot({
+  req(correlation_data())
+  corrplot(correlation_data(), method = "circle")
+})
+  
+}

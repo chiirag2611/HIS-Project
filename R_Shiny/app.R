@@ -15,7 +15,7 @@ check_and_install_packages <- function(packages) {
 # List of required packages
 required_packages <- c("shiny", "shinydashboard", "shinyjs", "readxl", "DT", "plotly", 
                       "ROSE", "caret", "smotefamily", "reactable", "shinyjqui", 
-                      "shinycssloaders", "bslib", "shinyBS","mice", "dplyr", "ggplot2", "tidyr", "lubridate", "shinyvalidate","missForest")
+                      "shinycssloaders", "bslib", "shinyBS","mice", "dplyr", "ggplot2", "tidyr", "lubridate", "shinyvalidate","missForest","viridis")
 
 # Check and install missing packages
 check_and_install_packages(required_packages)
@@ -34,6 +34,7 @@ library(reactable)
 library(shinyjqui)
 library(shinycssloaders)
 library(bslib)
+library(viridis)
 library(shinyBS)
 
 # Static credentials

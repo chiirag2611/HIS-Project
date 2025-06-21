@@ -8,10 +8,13 @@ library(shinyjs)
 library(shinyjqui)
 library(shinyBS)
 library(corrplot)
+library(viridis)
 
 
 ui <- dashboardPage(
-  dashboardHeader(title = "📊DataPrepHIS", titleWidth = 200,
+  dashboardHeader(
+    title = "📊DataPrepHIS", 
+    titleWidth = 200,
     tags$li(
       class = "dropdown",
       actionButton(
@@ -119,6 +122,18 @@ ui <- dashboardPage(
             margin-bottom: 10px;
           }
         }
+        .js-plotly-plot, .plot-container {
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        .plotly-graph-div {
+          min-height: 400px;
+          width: 100% !important;
+        }
+        .plotly {
+          width: 100%;
+          height: 100%;
+        }
       ")),
       tags$script(HTML('
         function triggerColumnSelection(triggerId) {
@@ -130,6 +145,7 @@ ui <- dashboardPage(
       '))
     ),
     useShinyjs(),
+    
     tabItems(
       # First tab item
       tabItem(
@@ -375,61 +391,86 @@ ui <- dashboardPage(
         fluidRow(
           # Box for single variable selection
           box(
-            title = "Variable Selection for Univariate Analysis", solidHeader = TRUE, width = 6,
-            selectInput("x_var", "Variable:", choices = NULL)
+            title = HTML("Variable Selection for Univariate Analysis <span data-toggle='tooltip' title='Select a variable for univariate analysis' class='fa fa-question-circle'></span>"), 
+            solidHeader = TRUE, 
+            width = 6,
+            selectInput("x_var", "Variable:", choices = NULL),
+            actionButton("select_univar_cols", "Search Variable", 
+                        class = "btn-sm btn-action",
+                        onclick = "triggerColumnSelection('visualization_univar')")
           ),
           # Box for two-variable selection
           box(
-            title = "Variable Selection for Bivariate Analysis", solidHeader = TRUE, width = 6,
+            title = HTML("Variable Selection for Bivariate Analysis <span data-toggle='tooltip' title='Select two variables for relationship analysis' class='fa fa-question-circle'></span>"), 
+            solidHeader = TRUE, 
+            width = 6,
             selectInput("x_var_bi", "X Variable:", choices = NULL),
-            selectInput("y_var", "Y Variable:", choices = NULL)
+            actionButton("select_x_var_bi_cols", "Quick Search X Variable", 
+                        class = "btn-sm btn-action",
+                        onclick = "triggerColumnSelection('visualization_x_var')"),
+            selectInput("y_var", "Y Variable:", choices = NULL),
+            actionButton("select_y_var_cols", "Quick Search Y Variable", 
+                        class = "btn-sm btn-action",
+                        onclick = "triggerColumnSelection('visualization_y_var')")
           )
         ),
         fluidRow(
           # Unidimensional analysis box
           box(
-            title = "Unidimensional Analysis", solidHeader = TRUE, width = 6,
+            title = "Unidimensional Analysis", solidHeader = TRUE, width = 6, height = "500px",
             tabsetPanel(
               tabPanel(
-                "Histogram", 
-                #numericInput("binwidth_input", "Binwidth:", value = 0.2, min = 0.01, step = 0.01),
-                plotlyOutput("histogram")
+                HTML("Histogram <span data-toggle='tooltip' title='Visualize the distribution of a single variable' class='fa fa-question-circle'></span>"),
+                div(style = "height: 400px; width: 100%;",
+                    plotlyOutput("histogram", height = "400px"))
               ),
-              tabPanel("Box Plot", plotlyOutput("boxplot")),
-               # Add a Pie Chart tab, dynamically controlled
               tabPanel(
-                "Pie Chart",
+                HTML("Box Plot <span data-toggle='tooltip' title='View the distribution, median, and potential outliers' class='fa fa-question-circle'></span>"),
+                div(style = "height: 400px; width: 100%;",
+                    plotlyOutput("boxplot", height = "400px"))
+              ),
+              tabPanel(
+                HTML("Pie Chart <span data-toggle='tooltip' title='Show proportion of categorical values' class='fa fa-question-circle'></span>"),
                 conditionalPanel(
-                  condition = "output.is_categorical === true", # Show only if variable is categorical
-                  plotOutput("pie_chart", height = 500, width = 600)
+                  condition = "output.is_categorical === true",
+                  div(style = "height: 400px; width: 100%; overflow: hidden;",
+                      plotOutput("pie_chart", height = "400px", width = "100%"))
                 )
               )
             )
           ),
+          
           # Bidimensional analysis box
           box(
-            title = "Bidimensional Analysis", solidHeader = TRUE, width = 6,
+            title = "Bidimensional Analysis", solidHeader = TRUE, width = 6, height = "500px",
             tabsetPanel(
               tabPanel(
-                "Correlation Plot",
-                plotlyOutput("bivariate_analysis"),
-                conditionalPanel(
-                  condition = "output.show_correlation === true",  # Show only for numeric variables
-                  h4(textOutput("correlation_coefficient"), style = "color: red; margin-top: 10px;")
-                )
+                  HTML("Correlation Plot <span data-toggle='tooltip' title='Visualize relationship between two variables' class='fa fa-question-circle'></span>"),
+                  div(style = "height: 360px; width: 100%;",
+                  plotlyOutput("bivariate_analysis", height = "100%")),
+                  conditionalPanel(
+                  condition = "output.show_correlation === true",
+                  div(style = "padding: 5px; text-align: center;",
+                  h5(textOutput("correlation_coefficient"), style = "color: #A84058; margin: 0;"))
+                  )
               ),
-              tabPanel("Correlation Matrix", plotOutput("correlation_matrix_plot")),
               tabPanel(
-                "Box Plot",
-                plotOutput("boxplot_parallel"),
+                HTML("Correlation Matrix <span data-toggle='tooltip' title='View correlations between all numeric variables' class='fa fa-question-circle'></span>"),
+                div(style = "height: 400px; width: 100%; overflow: hidden;",
+                    plotOutput("correlation_matrix_plot", height = "400px", width = "100%"))
+              ),
+              tabPanel(
+                HTML("Box Plot <span data-toggle='tooltip' title='Compare distributions across categories' class='fa fa-question-circle'></span>"),
+                div(style = "height: 400px; width: 100%; overflow: hidden;",
+                    plotOutput("boxplot_parallel", height = "400px", width = "100%")),
                 conditionalPanel(
-                  condition = "output.show_correlation_ratio === true",  # Show only for quantitative vs qualitative
+                  condition = "output.show_correlation_ratio === true",
                   h4(textOutput("correlation_ratio"), style = "color: blue; margin-top: 10px;")
                 )
               )
             )
           )
-        )
+        ),
       ),
       # Report Generation tab
       tabItem(
@@ -443,13 +484,14 @@ ui <- dashboardPage(
         )
       )
     ),
-    # Column Selection Modal
+    
+    # Column Selection Modal - moved inside dashboardBody
     bsModal(
       id = "columnSelectionModal",
       title = "Select Columns for Operation",
       trigger = "column_selection_trigger",
       size = "large",
-      fluidRow (
+      fluidRow(
         column(
           width = 3,
           h4("Quick Actions"),

@@ -461,13 +461,14 @@ ui <- dashboardPage(
               ),
               tabPanel(
                 HTML("Box Plot <span data-toggle='tooltip' title='Compare distributions across categories' class='fa fa-question-circle'></span>"),
-                div(style = "height: 400px; width: 100%; overflow: hidden;",
-                    plotOutput("boxplot_parallel", height = "400px", width = "100%")),
+                div(style = "height: 360px; width: 100%; overflow: hidden;",
+                plotOutput("boxplot_parallel", height = "100%", width = "100%")),
                 conditionalPanel(
                   condition = "output.show_correlation_ratio === true",
-                  h4(textOutput("correlation_ratio"), style = "color: blue; margin-top: 10px;")
+                  div(style = "padding: 5px; text-align: center;",
+                      h5(textOutput("correlation_ratio"), style = "color: #2E86C1; margin: 0;"))
+                  )
                 )
-              )
             )
           )
         ),

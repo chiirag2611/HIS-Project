@@ -2174,9 +2174,15 @@ output$boxplot <- renderPlotly({
   
   # Send the result of the qualitative/quantitative check to the UI
   output$show_correlation_ratio <- reactive({
-    is_qualitative_quantitative()
-  })
-  outputOptions(output, "show_correlation_ratio", suspendWhenHidden = FALSE)
+  req(input$x_var_bi, input$y_var, display_data())
+  data <- display_data()
+  x <- data[[input$x_var_bi]]
+  y <- data[[input$y_var]]
+  
+  # Only show correlation ratio for categorical X and numeric Y
+  is.numeric(y) && (is.factor(x) || is.character(x))
+})
+outputOptions(output, "show_correlation_ratio", suspendWhenHidden = FALSE)
   
   # Calculate and render the correlation ratio c_{Y|X}
   output$correlation_ratio <- renderText({

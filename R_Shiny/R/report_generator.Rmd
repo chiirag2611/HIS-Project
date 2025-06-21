@@ -1,0 +1,33 @@
+---
+title: "HIS Report"
+output:
+  pdf_document: default
+  html_document: default
+
+params:
+  summary_df_final: NULL
+---
+# Data Pre Processing and Visualization Report 
+This is the report generated for the HIS Project which summarizes the data preprocessing and its visualizations.
+
+## Data Summary
+
+```{r}
+knitr::kable(params$summary_df_final, caption = "Summary of Dataset")
+
+```
+
+## Data Preprocessing Summary
+
+```{r}
+
+
+```
+
+## Data Visualisation Summary
+
+
+```{r echo=FALSE}
+print("Generated Reports")
+```
+

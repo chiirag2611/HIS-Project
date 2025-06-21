@@ -9,6 +9,7 @@ library(shinyjqui)
 library(shinyBS)
 library(corrplot)
 
+
 ui <- dashboardPage(
   dashboardHeader(title = "📊DataPrepHIS", titleWidth = 200,
     tags$li(
@@ -27,7 +28,8 @@ ui <- dashboardPage(
     sidebarMenu(
       menuItem("Load Data", tabName = "load_data", icon = icon("file-upload", lib = "font-awesome")),
       menuItem("PreProcessing", tabName = "preprocessing", icon = icon("cogs")),
-      menuItem("Data Visualization", tabName = "visualization", icon = icon("chart-bar"))
+      menuItem("Data Visualization", tabName = "visualization", icon = icon("chart-bar")),
+      menuItem("Report Generation", tabName = "report_generation", icon = icon("file-alt"))
     )
   ),
   
@@ -426,6 +428,17 @@ ui <- dashboardPage(
                 )
               )
             )
+          )
+        )
+      ),
+      # Report Generation tab
+      tabItem(
+        tabName = "report_generation",
+        fluidRow(
+          box(
+            title = "Generate Report", solidHeader = TRUE, width = 12,
+            #actionButton("generate_report", "Generate Report", class = "btn-primary"),
+            downloadButton("download_report", "Download Report", class = "btn-secondary")
           )
         )
       )

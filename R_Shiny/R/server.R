@@ -14,6 +14,8 @@ library(shinycssloaders)
 library(missForest) #these packages can give error.
 library(mice)
 library(shinyBS)
+library(ggplot2)
+
 
 server <- function(input, output, session) {
   
@@ -707,11 +709,11 @@ server <- function(input, output, session) {
     data <- display_data()
     
     # Generate the summary for numerical and categorical features
-    summary_df <- generate_summary(data)
+    summary_final_df <- generate_summary(data)
     
     # Render the summary as a datatable
     datatable(
-      summary_df,
+      summary_final_df,
       options = list(scrollX = TRUE, pageLength = 10),  # Add scrolling and pagination
       rownames = FALSE
     )
@@ -1966,8 +1968,6 @@ server <- function(input, output, session) {
   
   # Bidimensional Analysis
   
-  
-  
   # Correlation plot
   output$bivariate_analysis <- renderPlotly({
     req(display_data(), input$x_var_bi, input$y_var)
@@ -2102,4 +2102,26 @@ server <- function(input, output, session) {
       theme_minimal() +
       labs(title = "Parallel Boxplots", x = input$x_var_bi, y = input$y_var)
   })
+
+  # Handling the Download Button
+  output$download_report <- downloadHandler(
+  filename = function() {
+    paste("HIS_Report_", Sys.Date(), ".html", sep = "")
+  },
+  content = function(file) {
+    tempReport <- file.path(tempdir(), "report_generator.Rmd")
+    file.copy("report_generator.Rmd", tempReport, overwrite = TRUE)
+
+    # Use your processed summary data here
+    summary_df_final <- generate_summary(display_data())
+
+    rmarkdown::render(
+      input = tempReport,
+      output_file = file,
+      params = list(summary_df_final = summary_df_final),
+      envir = new.env(parent = globalenv())
+    )
+  }
+  )
+
 } # End of server function

@@ -1,33 +1,315 @@
 ---
-title: "HIS Report"
-output:
-  pdf_document: default
-  html_document: default
-
+title: "📊DataPrepHIS Report"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: united
+    code_folding: hide
 params:
-  summary_df_final: NULL
+  data: NULL
+  original_filename: NULL
+  preprocessing_summary: NULL
+  numeric_vars: NULL
+  categorical_vars: NULL
+  visualizations: NULL
+  include_plots: TRUE
+  include_stats: TRUE
+  include_preprocessing: TRUE
+  include_correlation: TRUE
+  include_quality_report: TRUE
+  include_recommendations: TRUE
 ---
-# Data Pre Processing and Visualization Report 
-This is the report generated for the HIS Project which summarizes the data preprocessing and its visualizations.
 
-## Data Summary
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(dlookr)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(GGally)
+library(moments)
+```
+
+# Data Pre-Processing and Visualization Report 
+
+This report summarizes the data preprocessing steps and visualizations for the tool 📊DataPrepHIS.
+
+## 1. Dataset Overview
 
 ```{r}
-knitr::kable(params$summary_df_final, caption = "Summary of Dataset")
-
+# Display dataset name
+if(!is.null(params$original_filename)) {
+  cat("**Dataset Name:** ", params$original_filename)
+} else {
+  cat("**Dataset Name:** Not specified")
+}
 ```
 
-## Data Preprocessing Summary
+### 1.1 Data Preview
 
 ```{r}
-
-
+# Basic summary of dataset
+if(!is.null(params$data) && nrow(params$data) > 0) {
+  kable(head(params$data, 10), 
+       caption = "First 10 rows of dataset") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                 full_width = TRUE) %>%
+    scroll_box(width = "100%", height = "300px")
+} else {
+  cat("No data available to display.")
+}
 ```
 
-## Data Visualisation Summary
+### 1.2 Dataset Structure
 
-
-```{r echo=FALSE}
-print("Generated Reports")
+```{r}
+# Display data structure
+if(params$include_stats && !is.null(params$data) && ncol(params$data) > 0) {
+  # Dataset dimensions
+  cat("**Dataset Dimensions:** ", nrow(params$data), " rows × ", ncol(params$data), " columns\n\n")
+  
+  # Variable types table
+  params$data %>% 
+    diagnose() %>%
+    kable(caption = "Data Type Distribution") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+} else {
+  cat("No data available for structure analysis.")
+}
 ```
 
+## 2. Data Preprocessing
+
+### 2.1 Preprocessing Operations
+
+```{r}
+# Display preprocessing summary table
+if(params$include_preprocessing && !is.null(params$preprocessing_summary) && nrow(params$preprocessing_summary) > 0) {
+  kable(params$preprocessing_summary, 
+       caption = "Applied Preprocessing Operations") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+} else {
+  cat("No preprocessing operations were recorded.")
+}
+```
+
+### 2.2 Missing Values Analysis
+
+```{r}
+# Display missing values analysis
+if(params$include_stats && !is.null(params$data)) {
+  if(sum(is.na(params$data)) > 0) {
+    tryCatch({
+      params$data %>% 
+        plot_na_pareto(main = "Missing Values Distribution")
+    }, error = function(e) {
+      cat("**Missing value analysis:** There are", sum(is.na(params$data)), "missing values in the dataset.")
+    })
+  } else {
+    cat("**No missing values** found in the dataset.")
+  }
+}
+```
+
+## 3. Data Exploration
+
+### 3.1 Summary Statistics
+
+```{r}
+if(params$include_stats && !is.null(params$data) && ncol(params$data) > 0) {
+  # Generate summary statistics
+  summary_stats <- data.frame(
+    Column = names(params$data),
+    Class = sapply(params$data, function(x) { if (is.numeric(x)) "Numerical" else "Categorical" }),
+    Missing = sapply(params$data, function(x) {
+      if (is.factor(x) || is.character(x)) {
+        sum(is.na(x) | x == "" | x == "NA", na.rm = TRUE)
+      } else {
+        sum(is.na(x), na.rm = TRUE)
+      }
+    }),
+    Missing_Percent = sapply(params$data, function(x) {
+      missing_count <- if (is.factor(x) || is.character(x)) {
+        sum(is.na(x) | x == "" | x == "NA", na.rm = TRUE)
+      } else {
+        sum(is.na(x), na.rm = TRUE)
+      }
+      sprintf("%.1f%%", (missing_count / length(x)) * 100)
+    })
+  )
+  
+  # Add numeric-specific stats
+  summary_stats$Min <- sapply(params$data, function(x) if (is.numeric(x)) round(min(x, na.rm = TRUE), 2) else NA)
+  summary_stats$Max <- sapply(params$data, function(x) if (is.numeric(x)) round(max(x, na.rm = TRUE), 2) else NA)
+  summary_stats$Mean <- sapply(params$data, function(x) if (is.numeric(x)) round(mean(x, na.rm = TRUE), 2) else NA)
+  summary_stats$SD <- sapply(params$data, function(x) if (is.numeric(x)) round(sd(x, na.rm = TRUE), 2) else NA)
+  
+  # Replace NA values with dash for display
+  summary_stats[is.na(summary_stats)] <- "-"
+  
+  kable(summary_stats, caption = "Summary Statistics") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                 full_width = TRUE) %>%
+    scroll_box(width = "100%", height = "500px")
+} else {
+  cat("No data available for summary statistics.")
+}
+```
+
+### 3.2 Outlier Detection
+
+```{r}
+if(params$include_stats && params$include_plots && length(params$numeric_vars) > 0 && !is.null(params$data)) {
+  # Show outlier plot for numeric variables
+  tryCatch({
+    params$data %>%
+      select(params$numeric_vars[1:min(3, length(params$numeric_vars))]) %>%
+      plot_outlier()
+  }, error = function(e) {
+    cat("Could not generate outlier plot due to an error:", e$message)
+  })
+}
+```
+
+## 4. Data Visualizations
+
+### 4.1 Numeric Variables
+
+```{r}
+if(params$include_plots && length(params$numeric_vars) > 0 && !is.null(params$data)) {
+  # Histogram for numeric variables (show up to 4)
+  num_to_show <- min(4, length(params$numeric_vars))
+  for(i in 1:num_to_show) {
+    var <- params$numeric_vars[i]
+    if(var %in% names(params$data)) {
+      tryCatch({
+        p <- ggplot(params$data, aes_string(x = var)) +
+          geom_histogram(fill = "steelblue", bins = 30) +
+          theme_minimal() +
+          labs(title = paste("Distribution of", var),
+               x = var,
+               y = "Frequency")
+        print(p)
+      }, error = function(e) {
+        cat("Could not generate histogram for", var, ":", e$message, "\n")
+      })
+    }
+  }
+} else {
+  cat("No numerical variables available for visualization.")
+}
+```
+
+### 4.2 Categorical Variables
+
+```{r}
+if(params$include_plots && length(params$categorical_vars) > 0 && !is.null(params$data)) {
+  # Bar plots for categorical (show up to 4)
+  cat_to_show <- min(4, length(params$categorical_vars))
+  for(i in 1:cat_to_show) {
+    var <- params$categorical_vars[i]
+    if(var %in% names(params$data)) {
+      tryCatch({
+        # Count unique values to determine if we need to rotate labels
+        unique_count <- length(unique(params$data[[var]]))
+        angle <- if(unique_count > 5) 45 else 0
+        
+        p <- ggplot(params$data, aes_string(x = var)) +
+          geom_bar(fill = "steelblue") +
+          theme_minimal() +
+          theme(axis.text.x = element_text(angle = angle, hjust = 1)) +
+          labs(title = paste("Distribution of", var),
+               x = var,
+               y = "Count")
+        print(p)
+      }, error = function(e) {
+        cat("Could not generate bar plot for", var, ":", e$message, "\n")
+      })
+    }
+  }
+} else {
+  cat("No categorical variables available for visualization.")
+}
+```
+
+### 4.3 Correlation Analysis
+
+```{r}
+if(params$include_stats && params$include_correlation && length(params$numeric_vars) > 1 && !is.null(params$data)) {
+  # Create correlation matrix for numeric variables
+  tryCatch({
+    # Select numeric columns
+    numeric_data <- params$data %>% select(all_of(params$numeric_vars))
+    
+    # Create correlation plot
+    corr_matrix <- cor(numeric_data, use = "pairwise.complete.obs")
+    corrplot::corrplot(corr_matrix, 
+                      method = "circle", 
+                      type = "upper", 
+                      tl.col = "black", 
+                      tl.cex = 0.7,
+                      title = "Correlation Matrix of Numeric Variables",
+                      mar = c(0, 0, 1, 0))
+  }, error = function(e) {
+    cat("Could not generate correlation plot due to an error:", e$message)
+  })
+} else {
+  cat("Insufficient data for correlation analysis.")
+}
+```
+
+### 4.4 Bivariate Relationships
+
+```{r}
+if(params$include_plots && length(params$numeric_vars) >= 2 && !is.null(params$data)) {
+  # Show scatterplot matrix for first few numeric variables
+  tryCatch({
+    vars_to_plot <- params$numeric_vars[1:min(3, length(params$numeric_vars))]
+    pairs_data <- params$data %>% select(all_of(vars_to_plot))
+    
+    GGally::ggpairs(pairs_data, 
+                   title = "Relationships Between Numeric Variables")
+  }, error = function(e) {
+    cat("Could not generate bivariate plots due to an error:", e$message)
+  })
+} else {
+  cat("Insufficient numeric variables for bivariate analysis.")
+}
+```
+
+## 6. Executive Summary
+
+```{r}
+if(!is.null(params$data)) {
+  # Create an executive summary with key metrics
+  cat("Key Dataset Metrics\n\n")
+  
+  # Data size
+  data_size <- format(object.size(params$data), units = "auto")
+  num_rows <- nrow(params$data)
+  num_cols <- ncol(params$data)
+  
+  # Missing data percentage
+  missing_cells <- sum(is.na(params$data))
+  total_cells <- num_rows * num_cols
+  missing_pct <- round((missing_cells/total_cells) * 100, 2)
+  
+  # Variable types
+  num_numeric <- length(params$numeric_vars)
+  num_categorical <- length(params$categorical_vars)
+  
+  # Create a simple executive summary table
+  summary_table <- data.frame(
+    Metric = c("Rows", "Columns", "Data Size", "Missing Data", 
+               "Numeric Variables", "Categorical Variables"),
+    Value = c(num_rows, num_cols, data_size, paste0(missing_pct, "%"),
+              num_numeric, num_categorical)
+  )
+  
+  kable(summary_table, caption = "Dataset Overview") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+}
+```

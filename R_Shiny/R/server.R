@@ -17,6 +17,8 @@ library(shinyBS)
 library(corrplot)
 library(viridis)
 library(ggplot2)
+library(dlookr)
+library(rmarkdown)
 
 
 server <- function(input, output, session) {
@@ -699,7 +701,7 @@ server <- function(input, output, session) {
   generate_summary <- function(data) {
     summary_df <- data.frame(
       Column = names(data),
-      Class = sapply(data, function(x) if (is.numeric(x)) "Numerical" else "Categorical"),
+      Class = sapply(data, function(x) { if (is.numeric(x)) "Numerical" else "Categorical" }),
       Missing = sapply(data, function(x) {
         # Handle different data types for missing value detection
         if (is.factor(x) || is.character(x)) {
@@ -716,7 +718,7 @@ server <- function(input, output, session) {
         }
         sprintf("%.1f%%", (missing_count / length(x)) * 100)
       }),
-      Min = sapply(data, function(x) if (is.numeric(x)) min(x, na.rm = TRUE) else "-"),
+      Min = sapply(data, function(x) { if (is.numeric(x)) min(x, na.rm = TRUE) else "-" }),
       Median = sapply(data, function(x) if (is.numeric(x)) median(x, na.rm = TRUE) else "-"),
       Max = sapply(data, function(x) if (is.numeric(x)) max(x, na.rm = TRUE) else "-"),
       Mean = sapply(data, function(x) if (is.numeric(x)) sprintf("%.3f", mean(x, na.rm = TRUE)) else "-"),
@@ -2019,6 +2021,7 @@ output$boxplot <- renderPlotly({
     
     # Treat as categorical if it's a factor, character, or numeric with few unique values
     is.factor(variable) || is.character(variable) || 
+ 
       (is.numeric(variable) && length(unique(variable)) <= 10)
  
   })
@@ -2261,5 +2264,381 @@ output$correlation_matrix_plot <- renderPlot({
   req(correlation_data())
   corrplot(correlation_data(), method = "circle")
 })
+
+  # Initialize data for report previews
+report_data <- reactiveValues(
+  summary_stats = NULL,
+  data_preview = NULL
+)
+
+# Observe when data is loaded to prepare report data
+observe({
+  req(display_data())
+  data <- display_data()
   
-}
+  # Only update when we have actual data
+  if (nrow(data) > 0 && ncol(data) > 0) {
+    # Prepare basic summary stats for the report
+    report_data$summary_stats <- list(
+      n_rows = nrow(data),
+      n_cols = ncol(data),
+      n_numeric = sum(sapply(data, is.numeric)),
+      n_categorical = sum(sapply(data, function(x) is.factor(x) || is.character(x)))
+    )
+    
+    # Store a sample of the data for preview
+    report_data$data_preview <- head(data, 5)
+  }
+})
+
+# Report download handler
+output$download_report <- downloadHandler(
+  filename = function() {
+    paste0("data_preprocessing_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".html")
+  },
+  content = function(file) {
+    # Show a progress notification
+    withProgress(message = 'Generating report...', value = 0, {
+      
+      # Increment progress
+      incProgress(0.1, detail = "Preparing data")
+      
+      # Get the current dataset
+      current_data <- display_data()
+      
+      # Safely get file name if available
+      original_filename <- "Unknown"
+      if (!is.null(input$fileInput) && !is.null(input$fileInput$name)) {
+        original_filename <- input$fileInput$name
+      }
+      
+      # Create preprocessing summary dataframe from stored operations
+      preprocessing_summary <- data.frame(
+        Operation = character(),
+        Method = character(),
+        Variables = character(),
+        Timestamp = character(),
+        stringsAsFactors = FALSE
+      )
+      
+      incProgress(0.2, detail = "Collecting preprocessing information")
+      
+      # Add operations to the summary if they exist
+      if (!is.null(preprocessing_ops$missing_values)) {
+        preprocessing_summary <- rbind(preprocessing_summary, data.frame(
+          Operation = "Missing Values",
+          Method = preprocessing_ops$missing_values$method,
+          Variables = preprocessing_ops$missing_values$variables,
+          Timestamp = preprocessing_ops$missing_values$timestamp,
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+      if (!is.null(preprocessing_ops$outliers)) {
+        preprocessing_summary <- rbind(preprocessing_summary, data.frame(
+          Operation = "Outlier Handling",
+          Method = preprocessing_ops$outliers$method,
+          Variables = preprocessing_ops$outliers$variables,
+          Timestamp = preprocessing_ops$outliers$timestamp,
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+      if (!is.null(preprocessing_ops$transformation)) {
+        preprocessing_summary <- rbind(preprocessing_summary, data.frame(
+          Operation = "Data Transformation",
+          Method = preprocessing_ops$transformation$method,
+          Variables = preprocessing_ops$transformation$variables,
+          Timestamp = preprocessing_ops$transformation$timestamp,
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+      if (!is.null(preprocessing_ops$encoding)) {
+        preprocessing_summary <- rbind(preprocessing_summary, data.frame(
+          Operation = "Data Encoding",
+          Method = preprocessing_ops$encoding$method,
+          Variables = preprocessing_ops$encoding$variables,
+          Timestamp = preprocessing_ops$encoding$timestamp,
+          stringsAsFactors = FALSE
+        ))
+      }
+      
+      incProgress(0.4, detail = "Identifying variable types")
+      
+      # Identify numeric and categorical variables
+      numeric_vars <- character(0)
+      categorical_vars <- character(0)
+      
+      if (!is.null(current_data) && ncol(current_data) > 0) {
+        numeric_vars <- names(current_data)[sapply(current_data, is.numeric)]
+        categorical_vars <- names(current_data)[sapply(current_data, function(x) {
+          is.factor(x) || is.character(x) || is.logical(x)
+        })]
+      }
+      
+      # Check if these inputs exist, otherwise use defaults
+      include_plots <- if(is.null(input$include_plots)) TRUE else input$include_plots
+      include_stats <- if(is.null(input$include_stats)) TRUE else input$include_stats
+      include_preprocessing <- if(is.null(input$include_preprocessing)) TRUE else input$include_preprocessing
+      
+      # Generate visualizations that match the app's visualization tab
+      visualizations <- list()
+      
+      if (include_plots && !is.null(current_data) && nrow(current_data) > 0) {
+        tryCatch({
+          incProgress(0.5, detail = "Generating visualizations")
+          
+          # Create temporary directory for visualization files
+          viz_dir <- tempfile("viz_")
+          dir.create(viz_dir)
+          
+          # 1. Correlation matrix (similar to what's shown in the app)
+          if (length(numeric_vars) >= 2) {
+            tryCatch({
+              numeric_data <- current_data[, numeric_vars, drop = FALSE]
+              # Handle any NA values that might cause correlation calculation to fail
+              numeric_data <- na.omit(numeric_data)
+              
+              if (nrow(numeric_data) > 0) {
+                corr_matrix <- cor(numeric_data)
+                corr_file <- file.path(viz_dir, "correlation_matrix.png")
+                
+                png(corr_file, width = 800, height = 600, res = 100)
+                corrplot(corr_matrix, method = "circle", type = "upper", 
+                         tl.col = "black", tl.cex = 0.7,
+                         col = colorRampPalette(c("#6D9EC1", "white", "#E46726"))(200))
+                dev.off()
+                
+                visualizations$correlation_matrix <- corr_file
+              }
+            }, error = function(e) {
+              message("Error creating correlation matrix: ", e$message)
+            })
+          }
+          
+          # 2. Univariate visualizations - recreate what's in the visualization tab
+          # Use the current selected variable from the app if available
+          univar_selections <- list()
+          
+          # If x_var has a selection, use it, otherwise take the first few numeric and categorical vars
+          if (!is.null(input$x_var) && input$x_var %in% names(current_data)) {
+            univar_selections <- c(univar_selections, input$x_var)
+          } else {
+            # Add a few numeric and categorical variables
+            univar_selections <- c(
+              head(numeric_vars, 2),  # First 2 numeric vars
+              head(categorical_vars, 2)  # First 2 categorical vars
+            )
+          }
+          
+          # Make univar_selections unique
+          univar_selections <- unique(univar_selections)
+          
+          # Create a histogram for each numeric variable in selections
+          visualizations$histograms <- list()
+          for (var in univar_selections) {
+            if (var %in% numeric_vars) {
+              tryCatch({
+                hist_file <- file.path(viz_dir, paste0("hist_", make.names(var), ".png"))
+                
+                png(hist_file, width = 800, height = 500, res = 100)
+                hist_data <- current_data[[var]]
+                hist_data <- hist_data[!is.na(hist_data)]
+                
+                # Create histogram similar to what's in the app
+                hist(hist_data, 
+                     main = paste("Distribution of", var),
+                     xlab = var,
+                     col = "steelblue",
+                     border = "white",
+                     breaks = min(30, max(10, length(unique(hist_data)) / 2)))
+                
+                dev.off()
+                visualizations$histograms[[var]] <- hist_file
+              }, error = function(e) {
+                message("Error creating histogram for ", var, ": ", e$message)
+              })
+            }
+          }
+          
+          # 3. Create boxplots for numeric variables
+          visualizations$boxplots <- list()
+          for (var in univar_selections) {
+            if (var %in% numeric_vars) {
+              tryCatch({
+                box_file <- file.path(viz_dir, paste0("box_", make.names(var), ".png"))
+                
+                png(box_file, width = 800, height = 500, res = 100)
+                
+                # Create boxplot similar to what's in the app
+                boxplot(current_data[[var]], 
+                        main = paste("Boxplot of", var),
+                        ylab = var,
+                        col = "steelblue")
+                
+                dev.off()
+                visualizations$boxplots[[var]] <- box_file
+              }, error = function(e) {
+                message("Error creating boxplot for ", var, ": ", e$message)
+              })
+            }
+          }
+          
+          # 4. Create pie charts for categorical variables
+          visualizations$pie_charts <- list()
+          for (var in univar_selections) {
+            if (var %in% categorical_vars) {
+              tryCatch({
+                pie_file <- file.path(viz_dir, paste0("pie_", make.names(var), ".png"))
+                
+                # Get frequency table
+                freq_table <- table(current_data[[var]])
+                
+                # Only create pie chart if there are reasonable number of categories
+                if (length(freq_table) <= 10) {
+                  png(pie_file, width = 800, height = 500, res = 100)
+                  
+                  # Create pie chart
+                  pie(freq_table, 
+                      main = paste("Distribution of", var),
+                      col = rainbow(length(freq_table)))
+                  
+                  dev.off()
+                  visualizations$pie_charts[[var]] <- pie_file
+                }
+              }, error = function(e) {
+                message("Error creating pie chart for ", var, ": ", e$message)
+              })
+            }
+          }
+          
+          # 5. Bivariate plots - recreate scatterplots or parallel boxplots if vars are selected
+          # If x_var_bi and y_var are selected, create appropriate bivariate plot
+          if (!is.null(input$x_var_bi) && !is.null(input$y_var) &&
+              input$x_var_bi %in% names(current_data) && input$y_var %in% names(current_data)) {
+            
+            x_var <- input$x_var_bi
+            y_var <- input$y_var
+            
+            # Scatter plot for numeric-numeric relationship
+            if (x_var %in% numeric_vars && y_var %in% numeric_vars) {
+              tryCatch({
+                scatter_file <- file.path(viz_dir, "scatter_plot.png")
+                
+                png(scatter_file, width = 800, height = 500, res = 100)
+                
+                # Create scatter plot
+                plot(current_data[[x_var]], current_data[[y_var]],
+                     main = paste("Relationship between", x_var, "and", y_var),
+                     xlab = x_var, ylab = y_var,
+                     pch = 19, col = "steelblue")
+                
+                # Add regression line
+                abline(lm(current_data[[y_var]] ~ current_data[[x_var]]), col = "red")
+                
+                dev.off()
+                visualizations$scatter_plot <- scatter_file
+                
+                # Calculate and store correlation
+                cor_value <- cor(current_data[[x_var]], current_data[[y_var]], 
+                                use = "pairwise.complete.obs")
+                visualizations$correlation_value <- cor_value
+              }, error = function(e) {
+                message("Error creating scatter plot: ", e$message)
+              })
+            }
+            
+            # Parallel boxplot for categorical-numeric relationship
+            if (x_var %in% categorical_vars && y_var %in% numeric_vars) {
+              tryCatch({
+                boxplot_file <- file.path(viz_dir, "parallel_boxplot.png")
+                
+                png(boxplot_file, width = 800, height = 500, res = 100)
+                
+                # Create parallel boxplot
+                boxplot(current_data[[y_var]] ~ current_data[[x_var]],
+                       main = paste("Distribution of", y_var, "by", x_var),
+                       xlab = x_var, ylab = y_var,
+                       col = rainbow(length(unique(current_data[[x_var]]))),
+                       varwidth = TRUE)
+                
+                dev.off()
+                visualizations$parallel_boxplot <- boxplot_file
+              }, error = function(e) {
+                message("Error creating parallel boxplot: ", e$message)
+              })
+            }
+          }
+        }, error = function(e) {
+          message("Error in visualization generation: ", e$message)
+          # Return empty visualizations instead of failing
+          visualizations <- list()
+        })
+      }
+      
+      incProgress(0.7, detail = "Creating report")
+      
+      # Find the report template
+      template_path <- file.path(getwd(), "R", "report_generator.Rmd")
+      if (!file.exists(template_path)) {
+        # Try alternate locations
+        alternate_paths <- c(
+          "report_generator.Rmd",
+          file.path("R_Shiny", "R", "report_generator.Rmd"),
+          file.path("R_Shiny", "report_generator.Rmd"),
+          file.path("www", "report_generator.Rmd")
+        )
+        
+        for (path in alternate_paths) {
+          if (file.exists(path)) {
+            template_path <- path
+            break
+          }
+        }
+      }
+      
+      # If template still not found, output error message
+      if (!file.exists(template_path)) {
+        message("ERROR: Could not find report_generator.Rmd template!")
+        showNotification("Error: Report template not found", type = "error")
+        return()
+      }
+      
+      # Set up parameters to pass to the Rmd document
+      params <- list(
+        data = current_data,
+        original_filename = original_filename,
+        preprocessing_summary = preprocessing_summary,
+        numeric_vars = numeric_vars,
+        categorical_vars = categorical_vars,
+        visualizations = visualizations,
+        include_plots = include_plots,
+        include_stats = include_stats,
+        include_preprocessing = include_preprocessing
+      )
+      
+      # Render the report using the existing template
+      tryCatch({
+        rmarkdown::render(template_path, 
+                          output_format = "html_document",
+                          output_file = file,
+                          params = params,
+                          envir = new.env(parent = globalenv()))
+        
+        incProgress(1, detail = "Report completed")
+        showNotification("Report generated successfully!", type = "message")
+      }, error = function(e) {
+        # Print error message to console for debugging
+        message("Error in report generation:", e$message)
+        showNotification(paste("Error in report generation:", e$message), type = "error")
+      })
+      
+      # Clean up temporary files
+      if (exists("viz_dir") && dir.exists(viz_dir)) {
+        unlink(viz_dir, recursive = TRUE)
+      }
+    })
+  }
+)
+}# End of server function

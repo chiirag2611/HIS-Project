@@ -9,6 +9,8 @@ library(shinyjqui)
 library(shinyBS)
 library(corrplot)
 library(viridis)
+library(dlookr)
+library(rmarkdown)
 
 
 ui <- dashboardPage(
@@ -478,9 +480,46 @@ ui <- dashboardPage(
         tabName = "report_generation",
         fluidRow(
           box(
-            title = "Generate Report", solidHeader = TRUE, width = 12,
-            #actionButton("generate_report", "Generate Report", class = "btn-primary"),
-            downloadButton("download_report", "Download Report", class = "btn-secondary")
+            title = HTML("Report Generation <span data-toggle='tooltip' title='Configure your data report settings' class='fa fa-question-circle'></span>"),
+            solidHeader = TRUE,
+            width = 12,
+            status = "primary",
+            fluidRow(
+              column(
+                width = 8,
+                div(
+                  style = "background-color: #f8f9fa; border-radius: 10px; padding: 20px; margin-bottom: 20px;",
+                  h4(icon("file-alt"), " Data Processing Report"),
+                  p("Generate a comprehensive report of your dataset and all preprocessing steps applied. 
+                    The report includes data summaries, visualizations, and transformation details."),
+                  tags$ul(
+                    tags$li("Data summary statistics and structure"),
+                    tags$li("Missing value analysis and handling methods"),
+                    tags$li("Outlier detection and treatment summary"),
+                    tags$li("Data transformation and encoding details"),
+                    tags$li("Key visualizations of your data")
+                  )
+                )
+              )
+            ),
+            fluidRow(
+              column(
+                width = 12,
+                div(
+                  style = "display: flex; justify-content: center; margin-top: 25px;",
+                  downloadButton(
+                    "download_report", 
+                    "Download HTML Report", 
+                    class = "btn-primary",
+                    style = "padding: 12px 25px; font-size: 16px; background-color: #3399FF; border-radius: 5px; box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);"
+                  )
+                ),
+                div(
+                  style = "text-align: center; margin-top: 15px;",
+                  tags$small("The report will be generated based on your current dataset and applied transformations.")
+                )
+              )
+            )
           )
         )
       )

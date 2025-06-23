@@ -374,6 +374,12 @@ server <- function(input, output, session) {
             removeClass(id = "outlier_var_ui", class = "operation-applied")
             removeClass(id = "transform_var_ui", class = "operation-applied")
             removeClass(id = "encoding_var_ui", class = "operation-applied")
+
+            # Reset preprocessing operations when new data is loaded
+            preprocessing_ops$missing_values <- NULL
+            preprocessing_ops$outliers <- NULL
+            preprocessing_ops$transformation <- NULL
+            preprocessing_ops$encoding <- NULL
           }
         } else {
           # Use modal dialog to select a sheet only if multiple sheets exist
@@ -402,6 +408,12 @@ server <- function(input, output, session) {
         removeClass(id = "outlier_var_ui", class = "operation-applied")
         removeClass(id = "transform_var_ui", class = "operation-applied")
         removeClass(id = "encoding_var_ui", class = "operation-applied")
+
+        # Reset preprocessing operations when new data is loaded
+        preprocessing_ops$missing_values <- NULL
+        preprocessing_ops$outliers <- NULL
+        preprocessing_ops$transformation <- NULL
+        preprocessing_ops$encoding <- NULL
       }
     }
   })
@@ -444,6 +456,12 @@ server <- function(input, output, session) {
       removeClass(id = "outlier_var_ui", class = "operation-applied")
       removeClass(id = "transform_var_ui", class = "operation-applied")
       removeClass(id = "encoding_var_ui", class = "operation-applied")
+
+      # Reset preprocessing operations when new data is loaded
+      preprocessing_ops$missing_values <- NULL
+      preprocessing_ops$outliers <- NULL
+      preprocessing_ops$transformation <- NULL
+      preprocessing_ops$encoding <- NULL
     }
 
     removeModal()  # Close the modal after selection

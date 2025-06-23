@@ -1,7 +1,7 @@
 # Function to check and install required packages
 check_and_install_packages <- function(packages) {
   missing_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
-  if(length(missing_packages) > 0) {
+  if(length(missing_packages) > 0) {ov
     message("Installing missing packages: ", paste(missing_packages, collapse=", "))
     tryCatch({
       install.packages(missing_packages, dependencies=TRUE)

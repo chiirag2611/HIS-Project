@@ -531,7 +531,7 @@ ui <- dashboardPage(
         tabName = "about",
         fluidRow(
           box(
-            title = "📊 Data Pre-Processing for Machine Learning: User Mannual",
+            title = "📊DataPrepHIS Tool: User Manual",
             solidHeader = TRUE,
             width = 12,
             div(style = "overflow-y: auto; max-height: 80vh;", # Enables scrolling
@@ -543,7 +543,7 @@ ui <- dashboardPage(
 <ul>
   <li>Data Import: Upload datasets in CSV or Excel file formats.</li>
   <li>Data Preprocessing: Address missing values, scale numerical data, encode categorical features, and handle outliers.</li>
-  <li>Data Analysis: Conduct univariate and bivariate analysis using histograms, box plots, correlation matrices, and detailed statistical metrics.</li>
+  <li>Data visualization: Conduct univariate and bivariate analysis using histograms, box plots, correlation matrices, and detailed statistical metrics.</li>
   <li>Model Evaluation: Visualize performance metrics and display the confusion matrix.</li>
   <li>Operation Summary: Download a comprehensive summary of all performed tasks.</li>
 </ul>
@@ -610,16 +610,17 @@ ui <- dashboardPage(
       <li><strong>Variable Selection:</strong> Dynamically select a variable to manage its missing values.</li>
       <li><strong>Methods:</strong>
         <ul>
-          <li>Suppression: Removes rows containing missing values for the selected variable (From Load Data Section).</li>
-          <li>Replace with Mode: Fills missing values with the most frequent value.</li>
-          <li>Replace with Median: Fills missing values with the median of the variable.</li>
-          <li>Replace with Mean: Fills missing values with the mean of the variable.</li>
+          <li>Row Deletion: Removes rows containing missing values for the selected variable (From Load Data Section).</li>
+          <li>Handle with Mode: Fills missing values with the most frequent value.</li>
+          <li>Handle with Median: Fills missing values with the median of the variable.</li>
+          <li>Handle with Mean: Fills missing values with the mean of the variable.</li>
+          <li>Create Missing Category: Fills missing values with the text "Missing" if user wants to keep it explicit.</li>
         </ul>
       </li>
       <li><strong>Feedback:</strong> Provides detailed notifications and modal dialogs summarizing changes, including the number of missing values handled and the chosen method.</li>
     </ul>
   </li>
-  <li><strong>Managing Outliers</strong>
+  <li><strong>Handle Outliers</strong>
     <ul>
       <li><strong>Variable Selection:</strong> Supports numerical variables for outlier handling.</li>
       <li><strong>Outlier Detection:</strong> Uses the Interquartile Range (IQR) method to identify outliers.</li>
@@ -657,6 +658,10 @@ ui <- dashboardPage(
       </li>
       <li><strong>Feedback:</strong> Confirms successful encoding through notifications and modal dialogs.</li>
     </ul>
+  </li>
+  <li><strong>Download Preprossed File</strong>
+    <ul>
+      <li><strong>CSV download:</strong> Allows user to export the pre-processed dataset in CSV format.</li>
   </li>
 </ul>
 
@@ -760,9 +765,9 @@ ui <- dashboardPage(
 </ul>
 <h3>Contributors</h3>
 <ul>
-  <li>Adesh Shirke: 1541788</li>
-  <li>Chirag Chawla: 1541803</li>
-  <li>Samyak Soni: 1521498</li>
+  <li><strong>Adesh Shirke (adesh.shirke@stud.fra-uas.de)</strong>: 1541788</li>
+  <li><strong>Chirag Chawla (chirag.chawla@stud.fra-uas.de)</strong>: 1541803</li>
+  <li><strong>Samyak Soni (samyak.soni@stud.fra-uas.de)</strong>: 1521498</li>
 </ul>
 
 ')

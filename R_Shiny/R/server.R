@@ -1779,7 +1779,7 @@ server <- function(input, output, session) {
   # Save data as CSV on Save button click
   output$save_data <- downloadHandler(
     filename = function() {
-      paste("training_data_", Sys.Date(), ".csv", sep = "")
+      paste("preprocessed_data_", Sys.Date(), ".csv", sep = "")
     },
     content = function(file) {
       req(training_data())  # Ensure data exists

@@ -1,7 +1,7 @@
 # Function to check and install required packages
 check_and_install_packages <- function(packages) {
   missing_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
-  if(length(missing_packages) > 0) {ov
+  if(length(missing_packages) > 0) {
     message("Installing missing packages: ", paste(missing_packages, collapse=", "))
     tryCatch({
       install.packages(missing_packages, dependencies=TRUE)
@@ -16,7 +16,7 @@ check_and_install_packages <- function(packages) {
 required_packages <- c("shiny", "shinydashboard", "shinyjs", "readxl", "DT", "plotly", 
                       "ROSE", "caret", "smotefamily", "reactable", "shinyjqui", 
                       "shinycssloaders", "bslib", "shinyBS","mice", "dplyr",
-                       "ggplot2", "tidyr", "lubridate", "shinyvalidate","missForest","viridis","dlookr", "rmarkdown","knitr","kableExtra", "ggplot2", "corrplot","moments","GGally")
+                       "ggplot2", "tidyr", "lubridate", "shinyvalidate","missForest","viridis","dlookr", "rmarkdown","knitr","kableExtra", "ggplot2", "corrplot","moments","GGally","writexl")
 
 # Check and install missing packages
 check_and_install_packages(required_packages)

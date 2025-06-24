@@ -133,18 +133,127 @@ ui <- dashboardPage(
         .plotly-graph-div {
           min-height: 400px;
           width: 100% !important;
-        }
-        .plotly {
+        }        .plotly {
           width: 100%;
           height: 100%;
+        }          /* Drag and drop zone styling */        .drag-drop-zone {
+          border: 2px dashed #3399FF;
+          border-radius: 9px;
+          padding: 11px;
+          text-align: center;
+          color: #666;
+          margin-bottom: 7px;
+          transition: all 0.3s;
+          background-color: #f8f9fa;
+          cursor: pointer;
+        }
+        .drag-drop-zone:hover, .drag-drop-zone.dragover {
+          background-color: #e6f2ff;
+          border-color: #0066cc;
+        }        .drag-drop-zone .icon {
+          font-size: 33px;
+          color: #3399FF;
+          margin-bottom: 7px;
+        }
+        .drag-drop-zone p {
+          margin: 0px 0;
+        }        .drag-drop-zone .drag-text {
+          font-weight: bold;
+          font-size: 13px;
+        }        .drag-drop-zone .file-info {
+          font-size: 10px;
+          color: #888;
+        }
+        .drag-drop-zone.file-uploaded {
+          background-color: #d4edda;
+          border-color: #28a745;
+        }        .drag-drop-zone.file-uploaded .icon {
+          color: #28a745;
+        }
+        #fileInput {
+          display: none !important;
         }
       ")),
       tags$script(HTML('
         function triggerColumnSelection(triggerId) {
           Shiny.setInputValue("column_selection_trigger", triggerId, {priority: "event"});
         }
+        
+        // Function to update drag-drop zone appearance
+        function updateDropZoneStatus(isUploaded, fileName) {
+          var dropZone = document.getElementById("dragDropZone");
+          if (dropZone) {
+            if (isUploaded && fileName) {
+              $(dropZone).addClass("file-uploaded");
+              var dragText = dropZone.querySelector(".drag-text");
+              if (dragText) {
+                dragText.textContent = "File Uploaded: " + fileName;
+              }
+            } else {
+              $(dropZone).removeClass("file-uploaded");
+              var dragText = dropZone.querySelector(".drag-text");
+              if (dragText) {
+                dragText.textContent = "Drag & Drop Files Here";
+              }
+            }
+          }
+        }
+        
         $(function() { 
           $("[data-toggle=\'tooltip\']").tooltip();
+          
+          // Drag and drop handling
+          var dropZone = document.getElementById("dragDropZone");
+          
+          if (dropZone) {
+            dropZone.addEventListener("dragover", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              $(this).addClass("dragover");
+            });
+            
+            dropZone.addEventListener("dragleave", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              $(this).removeClass("dragover");
+            });
+            
+            dropZone.addEventListener("drop", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              $(this).removeClass("dragover");
+              
+              if (e.dataTransfer.files.length > 0) {
+                // Get the file input element
+                var fileInput = document.getElementById("fileInput");
+                
+                // Create a new FileList-like object with the dropped files
+                var dT = new DataTransfer();
+                for (var i = 0; i < e.dataTransfer.files.length; i++) {
+                  dT.items.add(e.dataTransfer.files[i]);
+                }
+                
+                // Set the files property
+                fileInput.files = dT.files;
+                
+                // Trigger change event to notify Shiny
+                $(fileInput).trigger("change");
+                
+                // Update drop zone status
+                updateDropZoneStatus(true, e.dataTransfer.files[0].name);
+              }
+            });
+            
+            // Also trigger file dialog on click
+            dropZone.addEventListener("click", function() {
+              document.getElementById("fileInput").click();
+            });
+          }
+          
+          // Handle custom messages from server
+          Shiny.addCustomMessageHandler("updateDropZone", function(message) {
+            updateDropZoneStatus(message.uploaded, message.fileName);
+          });
         });
       '))
     ),
@@ -154,14 +263,20 @@ ui <- dashboardPage(
       # First tab item
       tabItem(
         tabName = "load_data",
-        fluidRow(
-          box(
+        fluidRow( box(
             title = HTML("Loading Data <span data-toggle='tooltip' title='Upload your dataset in CSV or Excel format' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             class = "custom-box",
-            fileInput("fileInput", "Browse File", accept = c(".csv", ".xlsx")),
-            helpText("Upload a CSV or Excel file.")
+            div(id = "dragDropZone", class = "drag-drop-zone",
+              div(class = "icon", icon("file-upload")),
+              p(class = "drag-text", "Drag & Drop Files Here"),
+              p("or click to browse"),
+              p(class = "file-info", "Supported formats: CSV, Excel (.xlsx, .xls)")
+            ),
+            div(style = "display: none;",
+              fileInput("fileInput", "Browse File", accept = c(".csv", ".xlsx", ".xls"))
+            )
           ),
           box(
             title = HTML("File Details <span data-toggle='tooltip' title='View information about your uploaded dataset including dimensions and data types' class='fa fa-question-circle'></span>"),

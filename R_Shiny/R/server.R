@@ -42,6 +42,7 @@ server <- function(input, output, session) {
   display_data <- reactiveVal(NULL)
   save_variable <- reactiveVal(NULL)
   dropped_features <- reactiveVal(list())
+  upload_status <- reactiveVal("No file uploaded")
   
   # Create an empty reactiveValues object to store preprocessing operations
   preprocessing_ops <- reactiveValues(
@@ -338,7 +339,22 @@ server <- function(input, output, session) {
   observeEvent(input$fileInput, {
     req(input$fileInput)
     
-    file_ext <- tools::file_ext(input$fileInput$name)
+    # Validate file size (limit to 50MB)
+    if (input$fileInput$size > 50 * 1024 * 1024) {
+      showNotification("File size too large. Please upload files smaller than 50MB.", type = "error")
+      return()
+    }
+    
+    file_ext <- tolower(tools::file_ext(input$fileInput$name))
+    
+    # Validate file extension
+    if (!file_ext %in% c("csv", "xlsx", "xls")) {
+      showNotification("Invalid file format. Please upload CSV or Excel files only.", type = "error")
+      return()
+    }
+    
+    # Show loading notification for drag-and-drop feedback
+    showNotification("Loading file...", type = "message", duration = 2)
     
     # If it's an Excel file, handle sheet selection
     if (file_ext %in% c("xlsx", "xls")) {
@@ -367,6 +383,14 @@ server <- function(input, output, session) {
           if (!is.null(data)) {
             training_data(data)
             display_data(data)
+            upload_status(paste("File uploaded:", input$fileInput$name))
+            
+            # Update drag-drop zone appearance
+            session$sendCustomMessage("updateDropZone", list(
+              uploaded = TRUE, 
+              fileName = input$fileInput$name
+            ))
+            
             showNotification(paste("Data loaded successfully from sheet: '", sheet_names[1], "'", sep=""), type = "message")
             
             # Reset operation-applied indicators
@@ -401,6 +425,14 @@ server <- function(input, output, session) {
       if (!is.null(data)) {
         training_data(data)
         display_data(data)
+        upload_status(paste("File uploaded:", input$fileInput$name))
+        
+        # Update drag-drop zone appearance
+        session$sendCustomMessage("updateDropZone", list(
+          uploaded = TRUE, 
+          fileName = input$fileInput$name
+        ))
+        
         showNotification("Data uploaded successfully!", type = "message")
         
         # Reset operation-applied indicators
@@ -420,18 +452,37 @@ server <- function(input, output, session) {
   
   # Function to load data based on file type
   load_file_data <- function(fileInput) {
-    file_ext <- tools::file_ext(fileInput$name)
+    file_ext <- tolower(tools::file_ext(fileInput$name))
     
-    if (file_ext == "csv") {
-      return(read.csv(fileInput$datapath))
-    } else if (file_ext %in% c("xlsx", "xls")) {
-      # This function will now be used only for direct calls
-      sheet_names <- excel_sheets(fileInput$datapath)
-      return(read_excel(fileInput$datapath, sheet = sheet_names[1]))
-    } else {
-      showNotification("Unsupported file type", type = "error")
+    tryCatch({
+      if (file_ext == "csv") {
+        # Try different encodings for CSV files
+        data <- tryCatch({
+          read.csv(fileInput$datapath, stringsAsFactors = FALSE)
+        }, error = function(e1) {
+          tryCatch({
+            read.csv(fileInput$datapath, stringsAsFactors = FALSE, encoding = "UTF-8")
+          }, error = function(e2) {
+            read.csv(fileInput$datapath, stringsAsFactors = FALSE, encoding = "latin1")
+          })
+        })
+        return(data)
+      } else if (file_ext %in% c("xlsx", "xls")) {
+        # This function will now be used only for direct calls
+        sheet_names <- excel_sheets(fileInput$datapath)
+        if (length(sheet_names) == 0) {
+          showNotification("Excel file contains no readable sheets", type = "error")
+          return(NULL)
+        }
+        return(read_excel(fileInput$datapath, sheet = sheet_names[1]))
+      } else {
+        showNotification("Unsupported file type. Please upload CSV or Excel files.", type = "error")
+        return(NULL)
+      }
+    }, error = function(e) {
+      showNotification(paste("Error reading file:", e$message), type = "error")
       return(NULL)
-    }
+    })
   }
   
   # Handle sheet selection confirmation
@@ -449,6 +500,14 @@ server <- function(input, output, session) {
     if (!is.null(data)) {
       training_data(data)
       display_data(data)
+      upload_status(paste("File uploaded:", input$fileInput$name, "- Sheet:", input$sheet_select))
+      
+      # Update drag-drop zone appearance
+      session$sendCustomMessage("updateDropZone", list(
+        uploaded = TRUE, 
+        fileName = paste(input$fileInput$name, "(", input$sheet_select, ")")
+      ))
+      
       showNotification(paste("Data from sheet '", input$sheet_select, "' loaded successfully!", sep=""), type = "message")
       
       # Reset operation-applied indicators
@@ -500,7 +559,7 @@ server <- function(input, output, session) {
     }
   })
   
-  ## Data exploration
+## Data exploration
   
   # Safe reactive accessor function to avoid errors
   safe_get_display_data <- function() {

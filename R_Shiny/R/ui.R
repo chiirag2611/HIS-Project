@@ -497,10 +497,10 @@ ui <- dashboardPage(
                     The report includes data summaries, visualizations, and transformation details."),
                   tags$ul(
                     tags$li("Data summary statistics and structure"),
-                    tags$li("Missing value analysis and handling methods"),
-                    tags$li("Outlier detection and treatment summary"),
-                    tags$li("Data transformation and encoding details"),
-                    tags$li("Key visualizations of your data")
+                    tags$li("Data Preprocessing operations performed"),
+                    tags$li("Data exploration and missing value handling"),
+                    tags$li("Data visualizations including correlation plots and bivariate analysis"),
+                    tags$li("Executive summary of all operations performed")
                   )
                 )
               )

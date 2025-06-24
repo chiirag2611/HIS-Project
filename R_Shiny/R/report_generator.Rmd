@@ -3,9 +3,67 @@ title: "📊DataPrepHIS Report"
 output: 
   html_document:
     toc: true
-    toc_depth: 3
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
     theme: united
     code_folding: hide
+    df_print: paged
+    self_contained: true
+    css: |
+      .main-container {
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      h1, h2, h3, h4 {
+        margin-top: 24px;
+        margin-bottom: 16px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+      ul, ol {
+        padding-left: 2em;
+        margin-bottom: 16px;
+      }
+      li {
+        margin-bottom: 8px;
+        display: list-item;
+      }
+      li ul, li ol {
+        margin-top: 8px;
+        margin-left: 1em;
+      }
+      ul li {
+        list-style-type: disc;
+      }
+      ul li li {
+        list-style-type: circle;
+      }
+      ul li li li {
+        list-style-type: square;
+      }
+      ol li {
+        list-style-type: decimal;
+      }
+      ol li li {
+        list-style-type: lower-alpha;
+      }
+      ol li li li {
+        list-style-type: lower-roman;
+      }
+      p {
+        margin-bottom: 16px;
+      }
+      pre {
+        margin-bottom: 16px;
+      }
+      .table-container {
+        overflow-x: auto;
+        margin-bottom: 20px;
+      }
 params:
   data: NULL
   original_filename: NULL
@@ -22,7 +80,7 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, results = "asis")
 library(dlookr)
 library(ggplot2)
 library(dplyr)
@@ -31,59 +89,81 @@ library(kableExtra)
 library(corrplot)
 library(GGally)
 library(moments)
+library(htmltools)
+
+# Helper function to safely handle errors in numeric calculations
+safe_numeric <- function(expr, default = NA) {
+  tryCatch(
+    expr,
+    error = function(e) default,
+    warning = function(w) default
+  )
+}
 ```
 
 # Data Pre-Processing and Visualization Report 
 
-This report summarizes the data preprocessing steps and visualizations for the tool 📊DataPrepHIS.
+This report provides a detailed analysis of the data preprocessing steps and visualizations for the tool 📊DataPrepHIS.
 
-## 1. Dataset Overview
+## Dataset Overview
 
-```{r}
+### Dataset Information
+
+```{r results="asis"}
 # Display dataset name
 if(!is.null(params$original_filename)) {
-  cat("**Dataset Name:** ", params$original_filename)
+  cat("<p><strong>Dataset Name:</strong> ", params$original_filename, "</p>")
 } else {
-  cat("**Dataset Name:** Not specified")
+  cat("<p><strong>Dataset Name:</strong> Not specified</p>")
 }
+
+# Add analysis date
+cat("<p><strong>Analysis Date:</strong> ", format(Sys.Date(), "%B %d, %Y"), "</p>")
+
 ```
 
-### 1.1 Data Preview
+### Data Preview
 
 ```{r}
 # Basic summary of dataset
 if(!is.null(params$data) && nrow(params$data) > 0) {
-  kable(head(params$data, 10), 
+  # Format data for display - handle potential formatting issues
+  display_data <- params$data
+  # Convert very large or very small numbers to a readable format
+  display_data[] <- lapply(display_data, function(x) {
+    if(is.numeric(x)) {
+      # Format large numbers with commas and limit decimals
+      ifelse(abs(x) > 1000000 | abs(x) < 0.001, 
+             sprintf("%.2e", x),  # Scientific notation for very large/small
+             x)  # Keep original for normal range
+    } else {
+      x  # Return non-numeric as is
+    }
+  })
+  
+  kable(head(display_data, 10), 
        caption = "First 10 rows of dataset") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
                  full_width = TRUE) %>%
     scroll_box(width = "100%", height = "300px")
 } else {
-  cat("No data available to display.")
+  cat("<p>No data available to display.</p>")
 }
 ```
 
-### 1.2 Dataset Structure
+### Dataset Structure
 
-```{r}
+```{r results="asis"}
 # Display data structure
 if(params$include_stats && !is.null(params$data) && ncol(params$data) > 0) {
   # Dataset dimensions
-  cat("**Dataset Dimensions:** ", nrow(params$data), " rows × ", ncol(params$data), " columns\n\n")
-  
-  # Variable types table
-  params$data %>% 
-    diagnose() %>%
-    kable(caption = "Data Type Distribution") %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
-} else {
-  cat("No data available for structure analysis.")
+  cat("<p><strong>Dataset Dimensions:</strong> ", format(nrow(params$data), big.mark=","), " rows × ", ncol(params$data), " columns</p>\n\n")
 }
 ```
 
-## 2. Data Preprocessing
+## Data Preprocessing
 
-### 2.1 Preprocessing Operations
+### Preprocessing Operations
 
 ```{r}
 # Display preprocessing summary table
@@ -96,17 +176,40 @@ if(params$include_preprocessing && !is.null(params$preprocessing_summary) && nro
 }
 ```
 
-### 2.2 Missing Values Analysis
+### Missing Values Analysis
 
 ```{r}
 # Display missing values analysis
 if(params$include_stats && !is.null(params$data)) {
-  if(sum(is.na(params$data)) > 0) {
+  # More robust check for missing values including empty strings and "NA" text
+  any_missing <- sum(sapply(params$data, function(x) sum(is.na(x) | (is.character(x) & x == "") | (is.character(x) & x == "NA")))) > 0
+  
+  if(any_missing) {
     tryCatch({
       params$data %>% 
         plot_na_pareto(main = "Missing Values Distribution")
+      
+      # Add list of columns with missing values in the requested format
+      missing_cols <- sapply(params$data, function(x) {
+        if(is.factor(x) || is.character(x)) {
+          sum(is.na(x) | x == "" | x == "NA", na.rm = TRUE)
+        } else {
+          sum(is.na(x), na.rm = TRUE)
+        }
+      })
+      missing_cols <- missing_cols[missing_cols > 0]
+      
+      if(length(missing_cols) > 0) {
+        cat("\n\n#### Columns with Missing Values\n\n")
+        
+        for(col_name in names(missing_cols)) {
+          missing_count <- missing_cols[col_name]
+          missing_pct <- round(100 * missing_count / nrow(params$data), 2)
+          cat(col_name, " : ", missing_count, " values ( ", missing_pct, "% )\n\n", sep="")
+        }
+      }
     }, error = function(e) {
-      cat("**Missing value analysis:** There are", sum(is.na(params$data)), "missing values in the dataset.")
+      cat("**Missing value analysis:** There are", sum(is.na(params$data)), "missing values in the dataset. Error details:", e$message)
     })
   } else {
     cat("**No missing values** found in the dataset.")
@@ -114,17 +217,18 @@ if(params$include_stats && !is.null(params$data)) {
 }
 ```
 
-## 3. Data Exploration
+## Data Exploration
 
-### 3.1 Summary Statistics
+### Summary Statistics
 
 ```{r}
 if(params$include_stats && !is.null(params$data) && ncol(params$data) > 0) {
-  # Generate summary statistics
-  summary_stats <- data.frame(
-    Column = names(params$data),
+  # Create a summary table matching the Data Load tab format
+  summary_df <- data.frame(
+    #Column = names(params$data),
     Class = sapply(params$data, function(x) { if (is.numeric(x)) "Numerical" else "Categorical" }),
     Missing = sapply(params$data, function(x) {
+      # Handle different data types for missing value detection
       if (is.factor(x) || is.character(x)) {
         sum(is.na(x) | x == "" | x == "NA", na.rm = TRUE)
       } else {
@@ -138,45 +242,103 @@ if(params$include_stats && !is.null(params$data) && ncol(params$data) > 0) {
         sum(is.na(x), na.rm = TRUE)
       }
       sprintf("%.1f%%", (missing_count / length(x)) * 100)
-    })
+    }),
+    Min = sapply(params$data, function(x) { if (is.numeric(x)) min(x, na.rm = TRUE) else "-" }),
+    Median = sapply(params$data, function(x) { if (is.numeric(x)) median(x, na.rm = TRUE) else "-" }),
+    Max = sapply(params$data, function(x) { if (is.numeric(x)) max(x, na.rm = TRUE) else "-" }),
+    Mean = sapply(params$data, function(x) { if (is.numeric(x)) sprintf("%.3f", mean(x, na.rm = TRUE)) else "-" }),
+    SD = sapply(params$data, function(x) { if (is.numeric(x)) sprintf("%.3f", sd(x, na.rm = TRUE)) else "-" }),
+    Variance = sapply(params$data, function(x) { if (is.numeric(x)) sprintf("%.3f", var(x, na.rm = TRUE)) else "-" }),
+    Unique_Values = sapply(params$data, function(x) { if (!is.numeric(x)) length(unique(x)) else "-" })
   )
-  
-  # Add numeric-specific stats
-  summary_stats$Min <- sapply(params$data, function(x) if (is.numeric(x)) round(min(x, na.rm = TRUE), 2) else NA)
-  summary_stats$Max <- sapply(params$data, function(x) if (is.numeric(x)) round(max(x, na.rm = TRUE), 2) else NA)
-  summary_stats$Mean <- sapply(params$data, function(x) if (is.numeric(x)) round(mean(x, na.rm = TRUE), 2) else NA)
-  summary_stats$SD <- sapply(params$data, function(x) if (is.numeric(x)) round(sd(x, na.rm = TRUE), 2) else NA)
-  
-  # Replace NA values with dash for display
-  summary_stats[is.na(summary_stats)] <- "-"
-  
-  kable(summary_stats, caption = "Summary Statistics") %>%
-    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                 full_width = TRUE) %>%
-    scroll_box(width = "100%", height = "500px")
+
+  # Replace NAs with dash for display
+  summary_df[] <- lapply(summary_df, function(x) ifelse(is.na(x) | x == "NaN", "-", as.character(x)))
+
+  # Display the table with column alignment and fixed column names
+  kable(summary_df, caption = "Data Summary", align = rep('c', ncol(summary_df))) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                  full_width = TRUE) %>%
+    scroll_box(width = "100%", height = "400px")
 } else {
   cat("No data available for summary statistics.")
 }
 ```
 
-### 3.2 Outlier Detection
+### Outlier Detection
 
 ```{r}
-if(params$include_stats && params$include_plots && length(params$numeric_vars) > 0 && !is.null(params$data)) {
-  # Show outlier plot for numeric variables
-  tryCatch({
-    params$data %>%
-      select(params$numeric_vars[1:min(3, length(params$numeric_vars))]) %>%
-      plot_outlier()
-  }, error = function(e) {
-    cat("Could not generate outlier plot due to an error:", e$message)
-  })
+if(params$include_stats && length(params$numeric_vars) > 0 && !is.null(params$data)) {
+  # Simple outlier detection without complex plots
+  cat("### Outlier Analysis Results\n\n")
+  
+  # Process up to 3 numeric variables
+  vars_to_analyze <- params$numeric_vars[1:min(3, length(params$numeric_vars))]
+  outliers_found <- FALSE
+  
+  for(var in vars_to_analyze) {
+    if(var %in% names(params$data) && is.numeric(params$data[[var]])) {
+      # Get non-missing values
+      values <- params$data[[var]][!is.na(params$data[[var]])]
+      
+      if(length(values) >= 5) {
+        # Calculate outlier bounds using the IQR method
+        q1 <- quantile(values, 0.25, na.rm = TRUE)
+        q3 <- quantile(values, 0.75, na.rm = TRUE)
+        iqr <- q3 - q1
+        lower_bound <- q1 - 1.5 * iqr
+        upper_bound <- q3 + 1.5 * iqr
+        
+        # Count outliers
+        low_outliers <- sum(values < lower_bound)
+        high_outliers <- sum(values > upper_bound)
+        total_outliers <- low_outliers + high_outliers
+        
+        # Basic statistics
+        min_val <- min(values)
+        max_val <- max(values)
+        median_val <- median(values)
+        
+        # Display results
+        cat("**", var, "**\n\n", sep="")
+        
+        if(total_outliers > 0) {
+          outliers_found <- TRUE
+          cat("* **Outliers detected:** ", total_outliers, " (", 
+              round(100 * total_outliers / length(values), 2), "% of values)\n", sep="")
+          
+          if(low_outliers > 0) {
+            cat("* **Low outliers:** ", low_outliers, " values below ", round(lower_bound, 2), "\n", sep="")
+          }
+          
+          if(high_outliers > 0) {
+            cat("* **High outliers:** ", high_outliers, " values above ", round(upper_bound, 2), "\n", sep="")
+          }
+        } else {
+          cat("* No outliers detected\n")
+        }
+        
+        cat("* **Range:** ", round(min_val, 2), " to ", round(max_val, 2), "\n", sep="")
+        cat("* **Normal range:** ", round(lower_bound, 2), " to ", round(upper_bound, 2), " (based on IQR method)\n", sep="")
+        cat("* **Median:** ", round(median_val, 2), "\n\n", sep="")
+      } else {
+        cat("**", var, "**: Insufficient data for outlier analysis (requires at least 5 non-missing values)\n\n", sep="")
+      }
+    }
+  }
+  
+  if(!outliers_found && length(vars_to_analyze) > 0) {
+    cat("No outliers were detected in the analyzed variables.")
+  }
+} else {
+  cat("Insufficient numeric data for outlier detection.")
 }
 ```
+```
 
-## 4. Data Visualizations
+## Data Visualizations
 
-### 4.1 Numeric Variables
+### Numeric Variables
 
 ```{r}
 if(params$include_plots && length(params$numeric_vars) > 0 && !is.null(params$data)) {
@@ -203,12 +365,13 @@ if(params$include_plots && length(params$numeric_vars) > 0 && !is.null(params$da
 }
 ```
 
-### 4.2 Categorical Variables
+### Categorical Variables
 
 ```{r}
 if(params$include_plots && length(params$categorical_vars) > 0 && !is.null(params$data)) {
   # Bar plots for categorical (show up to 4)
   cat_to_show <- min(4, length(params$categorical_vars))
+  
   for(i in 1:cat_to_show) {
     var <- params$categorical_vars[i]
     if(var %in% names(params$data)) {
@@ -235,7 +398,7 @@ if(params$include_plots && length(params$categorical_vars) > 0 && !is.null(param
 }
 ```
 
-### 4.3 Correlation Analysis
+### Correlation Analysis
 
 ```{r}
 if(params$include_stats && params$include_correlation && length(params$numeric_vars) > 1 && !is.null(params$data)) {
@@ -244,15 +407,21 @@ if(params$include_stats && params$include_correlation && length(params$numeric_v
     # Select numeric columns
     numeric_data <- params$data %>% select(all_of(params$numeric_vars))
     
-    # Create correlation plot
-    corr_matrix <- cor(numeric_data, use = "pairwise.complete.obs")
-    corrplot::corrplot(corr_matrix, 
-                      method = "circle", 
-                      type = "upper", 
-                      tl.col = "black", 
-                      tl.cex = 0.7,
-                      title = "Correlation Matrix of Numeric Variables",
-                      mar = c(0, 0, 1, 0))
+    # Check if we have enough complete cases for correlation
+    complete_rows <- complete.cases(numeric_data)
+    if(sum(complete_rows) >= 2) {
+      # Create correlation plot
+      corr_matrix <- cor(numeric_data, use = "pairwise.complete.obs")
+      corrplot::corrplot(corr_matrix, 
+                        method = "circle", 
+                        type = "upper", 
+                        tl.col = "black", 
+                        tl.cex = 0.7,
+                        title = "Correlation Matrix of Numeric Variables",
+                        mar = c(0, 0, 1, 0))
+    } else {
+      cat("Insufficient complete cases for correlation analysis. Please check for missing values in numeric variables.")
+    }
   }, error = function(e) {
     cat("Could not generate correlation plot due to an error:", e$message)
   })
@@ -261,29 +430,43 @@ if(params$include_stats && params$include_correlation && length(params$numeric_v
 }
 ```
 
-### 4.4 Bivariate Relationships
+### Bivariate Relationships
 
 ```{r}
 if(params$include_plots && length(params$numeric_vars) >= 2 && !is.null(params$data)) {
   # Show scatterplot matrix for first few numeric variables
   tryCatch({
+    # Select up to 3 numeric variables to avoid overloading the report
     vars_to_plot <- params$numeric_vars[1:min(3, length(params$numeric_vars))]
     pairs_data <- params$data %>% select(all_of(vars_to_plot))
     
+    # Create scatter plot matrix
     GGally::ggpairs(pairs_data, 
                    title = "Relationships Between Numeric Variables")
   }, error = function(e) {
-    cat("Could not generate bivariate plots due to an error:", e$message)
+    # If ggpairs fails, try simple scatter plots
+    tryCatch({
+      if(length(params$numeric_vars) >= 2) {
+        # Create a basic scatter plot of the first two numeric variables
+        p <- ggplot(params$data, aes_string(x = params$numeric_vars[1], y = params$numeric_vars[2])) +
+          geom_point(alpha = 0.5) +
+          theme_minimal() +
+          labs(title = paste("Relationship between", params$numeric_vars[1], "and", params$numeric_vars[2]))
+        print(p)
+      }
+    }, error = function(e2) {
+      cat("Could not generate bivariate plots due to an error:", e2$message)
+    })
   })
 } else {
   cat("Insufficient numeric variables for bivariate analysis.")
 }
 ```
 
-## 6. Executive Summary
+## Executive Summary
 
 ```{r}
-if(!is.null(params$data)) {
+if(!is.null(params$data) && nrow(params$data) > 0) {
   # Create an executive summary with key metrics
   cat("Key Dataset Metrics\n\n")
   
@@ -292,8 +475,14 @@ if(!is.null(params$data)) {
   num_rows <- nrow(params$data)
   num_cols <- ncol(params$data)
   
-  # Missing data percentage
-  missing_cells <- sum(is.na(params$data))
+  # Missing data percentage - including empty strings and NA text for character columns
+  missing_cells <- sum(sapply(params$data, function(x) {
+    if(is.factor(x) || is.character(x)) {
+      sum(is.na(x) | x == "" | x == "NA", na.rm = TRUE)
+    } else {
+      sum(is.na(x), na.rm = TRUE)
+    }
+  }))
   total_cells <- num_rows * num_cols
   missing_pct <- round((missing_cells/total_cells) * 100, 2)
   
@@ -311,5 +500,7 @@ if(!is.null(params$data)) {
   
   kable(summary_table, caption = "Dataset Overview") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+} else {
+  cat("No data available for executive summary.")
 }
 ```

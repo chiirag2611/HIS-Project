@@ -104,7 +104,7 @@ login_ui <- fluidPage(
         width: 300px;
       }
     ")),
-    # Simplified and more reliable enter key handler
+
     tags$script('
       $(document).on("keydown", function(e) {
         if(e.which == 13) {
@@ -149,7 +149,7 @@ check_source_files <- function() {
   return(TRUE)
 }
 
-# Full app logic
+# App Connection
 ui_combined <- function() {
   uiOutput("app_ui")
 }
@@ -215,13 +215,13 @@ server_combined <- function(input, output, session) {
   # Logout handler
   observeEvent(input$logout_btn, {
     user_authenticated(FALSE)
-    session$reload()  # This will refresh the app, clearing any state
+    session$reload()  
   })
   
   output$app_ui <- renderUI({
     if (user_authenticated()) {
       if(check_source_files()) {
-        # Load actual UI & server from source files
+        # Load UI & server 
         ui_env <- new.env()
         source("R/ui.R", local = ui_env)
         source("R/server.R", local = TRUE)
@@ -237,7 +237,7 @@ server_combined <- function(input, output, session) {
   observe({
     if (user_authenticated()) {
       if(check_source_files()) {
-        # Load server logic and capture the server function
+        # Load server function
         server_env <- new.env()
         source("R/server.R", local = server_env)
         if (exists("server", envir = server_env)) {

@@ -221,7 +221,7 @@ server_combined <- function(input, output, session) {
   output$app_ui <- renderUI({
     if (user_authenticated()) {
       if(check_source_files()) {
-        # Load UI & server 
+        # Load UI & server from source files
         ui_env <- new.env()
         source("R/ui.R", local = ui_env)
         source("R/server.R", local = TRUE)
@@ -237,7 +237,7 @@ server_combined <- function(input, output, session) {
   observe({
     if (user_authenticated()) {
       if(check_source_files()) {
-        # Load server function
+        # Load server logic and capture the server function
         server_env <- new.env()
         source("R/server.R", local = server_env)
         if (exists("server", envir = server_env)) {

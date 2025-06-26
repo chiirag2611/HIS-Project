@@ -104,6 +104,12 @@ server <- function(input, output, session) {
       previous_selected_cols(input$y_var)
       modal_selected_cols(input$y_var)
       current_operation("visualization_y_var")
+    } else if (current_operation() == "drop_feature") {
+      previous_selected_cols(input$drop_feature)
+      modal_selected_cols(input$drop_feature)
+    } else if (current_operation() == "add_feature") {
+      previous_selected_cols(input$add_feature)
+      modal_selected_cols(input$add_feature)
     } else {
       previous_selected_cols(character(0))
       modal_selected_cols(character(0))  # Default to empty
@@ -239,7 +245,12 @@ server <- function(input, output, session) {
       updateSelectInput(session, "x_var_bi", selected = selected_cols)
     } else if (current_operation() == "visualization_y_var") {
       updateSelectInput(session, "y_var", selected = selected_cols)
+    } else if (current_operation() == "drop_feature") {
+      updateSelectInput(session, "drop_feature", selected = selected_cols)
+    } else if (current_operation() == "add_feature") {
+      updateSelectInput(session, "add_feature", selected = selected_cols)
     }
+  
     
     # Show notification
     if (length(selected_cols) > 0) {
@@ -313,6 +324,10 @@ server <- function(input, output, session) {
       updateSelectInput(session, "x_var_bi", selected = previous_selected_cols())
     } else if (current_operation() == "visualization_y_var") {
       updateSelectInput(session, "y_var", selected = previous_selected_cols())
+    } else if (current_operation() == "drop_feature") {
+      updateSelectInput(session, "drop_feature", selected = previous_selected_cols())
+    } else if (current_operation() == "add_feature") {
+      updateSelectInput(session, "add_feature", selected = previous_selected_cols())
     }
     
     # Close the modal without updating any selections
@@ -795,13 +810,28 @@ server <- function(input, output, session) {
         }
         sprintf("%.1f%%", (missing_count / length(x)) * 100)
       }),
-      Min = sapply(data, function(x) { if (is.numeric(x)) min(x, na.rm = TRUE) else "-" }),
-      Median = sapply(data, function(x) if (is.numeric(x)) median(x, na.rm = TRUE) else "-"),
-      Max = sapply(data, function(x) if (is.numeric(x)) max(x, na.rm = TRUE) else "-"),
-      Mean = sapply(data, function(x) if (is.numeric(x)) sprintf("%.3f", mean(x, na.rm = TRUE)) else "-"),
-      SD = sapply(data, function(x) if (is.numeric(x)) sprintf("%.3f", sd(x, na.rm = TRUE)) else "-"),
-      Variance = sapply(data, function(x) if (is.numeric(x)) sprintf("%.3f", var(x, na.rm = TRUE)) else "-"),
-      Unique_Values = sapply(data, function(x) if (!is.numeric(x)) length(unique(x)) else "-")
+    Min = sapply(data, function(x) { 
+  if (is.numeric(x)) round(min(x, na.rm = TRUE), 2) else "-" 
+}),
+Median = sapply(data, function(x) 
+  if (is.numeric(x)) round(median(x, na.rm = TRUE), 2) else "-"
+),
+Max = sapply(data, function(x) 
+  if (is.numeric(x)) round(max(x, na.rm = TRUE), 2) else "-"
+),
+Mean = sapply(data, function(x) 
+  if (is.numeric(x)) round(mean(x, na.rm = TRUE), 2) else "-"
+),
+SD = sapply(data, function(x) 
+  if (is.numeric(x)) round(sd(x, na.rm = TRUE), 2) else "-"
+),
+Variance = sapply(data, function(x) 
+  if (is.numeric(x)) round(var(x, na.rm = TRUE), 2) else "-"
+),
+Unique_Values = sapply(data, function(x) 
+  if (!is.numeric(x)) length(unique(x)) else "-"
+)
+
     )
     
     summary_df[] <- lapply(summary_df, function(x) ifelse(is.na(x), "-", as.character(x)))

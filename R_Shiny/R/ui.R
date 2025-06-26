@@ -279,7 +279,7 @@ ui <- dashboardPage(
             )
           ),
           box(
-            title = HTML("File Details <span data-toggle='tooltip' title='View information about your uploaded dataset including dimensions and data types' class='fa fa-question-circle'></span>"),
+            title = HTML("File Details <span data-toggle='tooltip' title='Overview the dimensions and data types of your uploaded dataset.' class='fa fa-question-circle'></span>"),
             solidHeader = TRUE,
             width = 6,
             verbatimTextOutput("fileDetails")
@@ -362,21 +362,33 @@ ui <- dashboardPage(
           )
         ),
         fluidRow(
-          box(
-              title = HTML("Drop Feature <span data-toggle='tooltip' title='Remove selected features/columns from your dataset' class='fa fa-question-circle'></span>"),
-              solidHeader = TRUE,
-              width = 6,
-              uiOutput("drop_feature_ui"),
-              actionButton("apply_drop", "Delete")
-            ),    
-          box(
-            title = HTML("Add Feature <span data-toggle='tooltip' title='Add back previously dropped features to your dataset' class='fa fa-question-circle'></span>"),
-            solidHeader = TRUE,
-            width = 6,
-            uiOutput("add_feature_ui"),
-            actionButton("apply_add", "Insert")
-          )
-        ),
+  box(
+    title = HTML("Drop Feature <span data-toggle='tooltip' title='Remove selected features/columns from your dataset' class='fa fa-question-circle'></span>"),
+    solidHeader = TRUE,
+    width = 6,
+    uiOutput("drop_feature_ui"),
+    div(
+      style = "display: flex; justify-content: space-between; margin-top: 15px;",
+      actionButton("apply_drop", "Delete", class = "btn-apply"),
+      actionButton("select_drop_cols", "Select Multiple Columns",
+                   class = "btn-sm btn-action",
+                   onclick = "triggerColumnSelection('drop_feature')")
+    )
+  ),
+  box(
+    title = HTML("Add Feature <span data-toggle='tooltip' title='Add back previously dropped features to your dataset' class='fa fa-question-circle'></span>"),
+    solidHeader = TRUE,
+    width = 6,
+    uiOutput("add_feature_ui"),
+    div(
+      style = "display: flex; justify-content: space-between; margin-top: 15px;",
+      actionButton("apply_add", "Insert", class = "btn-apply"),
+      actionButton("select_add_cols", "Select Multiple Columns",
+                   class = "btn-sm btn-action",
+                   onclick = "triggerColumnSelection('add_feature')")
+    )
+  )
+),
         fluidRow(
           box(
             title = HTML("Convert Numerical to Categorical <span data-toggle='tooltip' title='Transform numerical variables into categorical format for classification or grouping' class='fa fa-question-circle'></span>"),

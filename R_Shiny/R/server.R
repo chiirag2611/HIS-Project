@@ -129,50 +129,57 @@ server <- function(input, output, session) {
   
   # Modal column selector UI
   output$modal_column_selector <- renderUI({
-    req(display_data())
+  # For Add Feature, show only dropped features
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+    col_names <- names(df)
+  } else {
     df <- display_data()
     col_names <- names(df)
-    
-    # Filter columns based on search term if any
-    if (!is.null(input$modal_search_columns) && input$modal_search_columns != "") {
-      search_term <- tolower(input$modal_search_columns)
-      col_names <- col_names[grepl(search_term, tolower(col_names))]
-    }
-    
-    if (length(col_names) == 0) {
-      return(tags$div("No columns match your search criteria"))
-    }
-    
-    # Get current selection state
-    current_selections <- modal_selected_cols()
-    
-    # Create checkboxes
-    checkbox_list <- lapply(col_names, function(col) {
-      is_numeric <- is.numeric(df[[col]])
-      type_label <- if(is_numeric) "numeric" else "categorical"
-      type_color <- if(is_numeric) "#007bff" else "#28a745"
-      
-      is_selected <- col %in% current_selections
-      
-      div(
-        style = "margin-bottom: 5px;",
-        checkboxInput(
-          inputId = paste0("modal_col_", make.names(col)),
-          label = tags$span(
-            col,
-            tags$span(
-              style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
-              paste0("(", type_label, ")")
-            )
-          ),
-          value = is_selected
-        )
+  }
+
+  # Filter columns based on search term if any
+  if (!is.null(input$modal_search_columns) && input$modal_search_columns != "") {
+    search_term <- tolower(input$modal_search_columns)
+    col_names <- col_names[grepl(search_term, tolower(col_names))]
+  }
+
+  if (length(col_names) == 0) {
+    return(tags$div("No columns match your search criteria"))
+  }
+
+  # Get current selection state
+  current_selections <- modal_selected_cols()
+
+  # Create checkboxes
+  checkbox_list <- lapply(col_names, function(col) {
+    is_numeric <- if (!is.null(df[[col]])) is.numeric(df[[col]]) else FALSE
+    type_label <- if (is_numeric) "numeric" else "categorical"
+    type_color <- if (is_numeric) "#007bff" else "#28a745"
+    is_selected <- col %in% current_selections
+
+    div(
+      style = "margin-bottom: 5px;",
+      checkboxInput(
+        inputId = paste0("modal_col_", make.names(col)),
+        label = tags$span(
+          col,
+          tags$span(
+            style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
+            paste0("(", type_label, ")")
+          )
+        ),
+        value = is_selected
       )
-    })
-    
-    do.call(tagList, checkbox_list)
+    )
   })
-    # Observer for individual checkbox changes in the modal
+
+  do.call(tagList, checkbox_list)
+})
+  
+  
+  
+      # Observer for individual checkbox changes in the modal
   observe({
     req(display_data())
     df <- display_data()
@@ -198,100 +205,110 @@ server <- function(input, output, session) {
     modal_selected_cols(selected)
   })
   # Handle modal confirmation
-  observeEvent(input$modal_confirm, {
-    req(current_operation())
-    
-    # Get all selected columns from checkboxes
-    df <- display_data()
-    selected_cols <- c()
-    
-    # If we've explicitly deselected all, ensure the list is empty
-    if (length(modal_selected_cols()) == 0) {
-      selected_cols <- character(0)
-    } else {
-      # Otherwise, gather selected columns from checkboxes
-      for (col in names(df)) {
-        checkbox_id <- paste0("modal_col_", make.names(col))
-        if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
-          selected_cols <- c(selected_cols, col)
-        }
-      }
-    }
-    
-    # Save the confirmed selection
-    modal_selected_cols(selected_cols)
-    
-    # Set modal state to closed
-    modal_is_open(FALSE)
-    
-    # Debug message
-    message("Selected columns confirmed: ", paste(selected_cols, collapse=", "))
-    
-    # Update the appropriate input based on current operation
-    if (current_operation() == "missing") {
-      updateSelectInput(session, "missing_var", selected = selected_cols)
-    } 
-    else if (current_operation() == "outliers") {
-      updateSelectInput(session, "outlier_var", selected = selected_cols)
-    }
-    else if (current_operation() == "transformation") {
-      updateSelectInput(session, "transform_var", selected = selected_cols)
-    }
-    else if (current_operation() == "encoding") {
-      updateSelectInput(session, "encoding_var", selected = selected_cols)
-    } else if (current_operation() == "visualization_univar") {
-      updateSelectInput(session, "x_var", selected = selected_cols)
-    } else if (current_operation() == "visualization_x_var") {
-      updateSelectInput(session, "x_var_bi", selected = selected_cols)
-    } else if (current_operation() == "visualization_y_var") {
-      updateSelectInput(session, "y_var", selected = selected_cols)
-    } else if (current_operation() == "drop_feature") {
-      updateSelectInput(session, "drop_feature", selected = selected_cols)
-    } else if (current_operation() == "add_feature") {
-      updateSelectInput(session, "add_feature", selected = selected_cols)
-    }
+observeEvent(input$modal_confirm, {
+  req(current_operation())
   
-    
-    # Show notification
-    if (length(selected_cols) > 0) {
-      showNotification(paste("Selected", length(selected_cols), "columns"), type = "message")
-    }
-
-    toggleModal(session, "columnSelectionModal", toggle = "close")
-  })
-  # Modal quick actions
-  observeEvent(input$modal_select_all, {
+  # For add_feature, use dropped_features; otherwise, use display_data
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+  } else {
     df <- display_data()
-    col_names <- names(df)
-    modal_selected_cols(col_names)
-    update_checkbox_states()
-  })
+  }
+  selected_cols <- c()
   
-  observeEvent(input$modal_deselect_all, {
-    # Clear the selections completely
-    modal_selected_cols(character(0))
-    
-    # Update all checkbox states to deselected
-    df <- display_data()
+  # If we've explicitly deselected all, ensure the list is empty
+  if (length(modal_selected_cols()) == 0) {
+    selected_cols <- character(0)
+  } else {
+    # Otherwise, gather selected columns from checkboxes
     for (col in names(df)) {
       checkbox_id <- paste0("modal_col_", make.names(col))
-      updateCheckboxInput(session, checkbox_id, value = FALSE)
+      if (!is.null(input[[checkbox_id]]) && input[[checkbox_id]]) {
+        selected_cols <- c(selected_cols, col)
+      }
     }
-  })
+  }
   
-  observeEvent(input$modal_select_numeric, {
-    df <- display_data()
-    numeric_cols <- names(df)[sapply(df, is.numeric)]
-    modal_selected_cols(numeric_cols)
-    update_checkbox_states()
-  })
+  # Save the confirmed selection
+  modal_selected_cols(selected_cols)
   
-  observeEvent(input$modal_select_categorical, {
+  # Set modal state to closed
+  modal_is_open(FALSE)
+  
+  # Debug message
+  message("Selected columns confirmed: ", paste(selected_cols, collapse = ", "))
+  
+  # Update the appropriate input based on current operation
+  if (current_operation() == "missing") {
+    updateSelectInput(session, "missing_var", selected = selected_cols)
+  } 
+  else if (current_operation() == "outliers") {
+    updateSelectInput(session, "outlier_var", selected = selected_cols)
+  }
+  else if (current_operation() == "transformation") {
+    updateSelectInput(session, "transform_var", selected = selected_cols)
+  }
+  else if (current_operation() == "encoding") {
+    updateSelectInput(session, "encoding_var", selected = selected_cols)
+  } else if (current_operation() == "visualization_univar") {
+    updateSelectInput(session, "x_var", selected = selected_cols)
+  } else if (current_operation() == "visualization_x_var") {
+    updateSelectInput(session, "x_var_bi", selected = selected_cols)
+  } else if (current_operation() == "visualization_y_var") {
+    updateSelectInput(session, "y_var", selected = selected_cols)
+  } else if (current_operation() == "drop_feature") {
+    updateSelectInput(session, "drop_feature", selected = selected_cols)
+  } else if (current_operation() == "add_feature") {
+    updateSelectInput(session, "add_feature", selected = selected_cols)
+  }
+
+  # Show notification
+  if (length(selected_cols) > 0) {
+    showNotification(paste("Selected", length(selected_cols), "columns"), type = "message")
+  }
+
+  toggleModal(session, "columnSelectionModal", toggle = "close")
+})
+  # Modal quick actions
+# Select All
+observeEvent(input$modal_select_all, {
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+  } else {
     df <- display_data()
-    cat_cols <- names(df)[sapply(df, function(x) is.factor(x) || is.character(x))]
-    modal_selected_cols(cat_cols)
-    update_checkbox_states()
-  })
+  }
+  col_names <- names(df)
+  modal_selected_cols(col_names)
+  update_checkbox_states()
+})
+
+# Deselect All
+observeEvent(input$modal_deselect_all, {
+  modal_selected_cols(character(0))
+  update_checkbox_states()
+})
+  
+observeEvent(input$modal_select_numeric, {
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+  } else {
+    df <- display_data()
+  }
+  numeric_cols <- names(df)[sapply(df, is.numeric)]
+  modal_selected_cols(numeric_cols)
+  update_checkbox_states()
+})
+
+observeEvent(input$modal_select_categorical, {
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+  } else {
+    df <- display_data()
+  }
+  cat_cols <- names(df)[sapply(df, function(x) is.factor(x) || is.character(x))]
+  modal_selected_cols(cat_cols)
+  update_checkbox_states()
+})
   
   # Observer for search field changes - forces UI update
   observeEvent(input$modal_search_columns, {

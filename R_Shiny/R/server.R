@@ -328,6 +328,18 @@ observeEvent(input$modal_select_categorical, {
   update_checkbox_states()
 })
   
+observeEvent(input$modal_select_other, {
+  if (current_operation() == "add_feature") {
+    df <- as.data.frame(dropped_features())
+  } else {
+    df <- display_data()
+  }
+  other_cols <- names(df)[
+    !sapply(df, is.numeric) & !sapply(df, function(x) is.factor(x) || is.character(x))
+  ]
+  modal_selected_cols(other_cols)
+  update_checkbox_states()
+})
   # Observer for search field changes - forces UI update
   observeEvent(input$modal_search_columns, {
     # This will trigger a re-render of the modal_column_selector UI

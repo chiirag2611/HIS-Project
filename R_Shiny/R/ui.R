@@ -303,7 +303,8 @@ ui <- dashboardPage(
                 div(
                   style = "margin-bottom: 15px;",
                   actionButton("select_numeric_cols", "Select Numeric", class = "btn-sm btn-action"),
-                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action")
+                  actionButton("select_categorical_cols", "Select Categorical", class = "btn-sm btn-action"),
+                  actionButton("select_other_cols", "Select Other", class = "btn-sm btn-action")
                 ),
                 h4(HTML("First/Last Columns <span data-toggle='tooltip' title='Select columns based on their position in the dataset' class='fa fa-question-circle'></span>")),
                 div(
@@ -920,13 +921,14 @@ ui <- dashboardPage(
         actionButton("modal_deselect_all", "Deselect All", class = "btn-sm btn-action")
       ),
       conditionalPanel(
-        condition = "!(input.column_selection_trigger == 'encoding' || input.column_selection_trigger == 'transformation' || input.column_selection_trigger == 'outliers')",
-        div(
-          style = "margin-bottom: 15px;",
-          actionButton("modal_select_numeric", "Select Numeric", class = "btn-sm btn-action"),
-          actionButton("modal_select_categorical", "Select Categorical", class = "btn-sm btn-action")
-        )
-      )
+  condition = "!(input.column_selection_trigger == 'encoding' || input.column_selection_trigger == 'transformation' || input.column_selection_trigger == 'outliers')",
+  div(
+    style = "margin-bottom: 15px;",
+    actionButton("modal_select_numeric", "Select Numeric", class = "btn-sm btn-action"),
+    actionButton("modal_select_categorical", "Select Categorical", class = "btn-sm btn-action"),
+    actionButton("modal_select_other", "Select Other", class = "btn-sm btn-action")
+  )
+)
     ),
     column(
       width = 9,

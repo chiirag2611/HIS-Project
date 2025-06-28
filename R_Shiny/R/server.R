@@ -159,27 +159,39 @@ output$modal_column_selector <- renderUI({
 
   # Create checkboxes
   checkbox_list <- lapply(col_names, function(col) {
-    is_numeric <- if (!is.null(df[[col]])) is.numeric(df[[col]]) else FALSE
-    type_label <- if (is_numeric) "numeric" else "categorical"
-    type_color <- if (is_numeric) "#007bff" else "#28a745"
-    is_selected <- col %in% current_selections
+  value <- df[[col]]
+  is_numeric <- is.numeric(value)
+  is_categorical <- is.factor(value) || is.character(value)
+  is_other <- !(is_numeric || is_categorical)
 
-    div(
-      style = "margin-bottom: 5px;",
-      checkboxInput(
-        inputId = paste0("modal_col_", make.names(col)),
-        label = tags$span(
-          col,
-          tags$span(
-            style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
-            paste0("(", type_label, ")")
-          )
-        ),
-        value = is_selected
-      )
+  if (is_numeric) {
+    type_label <- "numeric"
+    type_color <- "#007bff"
+  } else if (is_categorical) {
+    type_label <- "categorical"
+    type_color <- "#28a745"
+  } else {
+    type_label <- "Other"
+    type_color <- "orange"
+  }
+
+  is_selected <- col %in% current_selections
+
+  div(
+    style = "margin-bottom: 5px;",
+    checkboxInput(
+      inputId = paste0("modal_col_", make.names(col)),
+      label = tags$span(
+        col,
+        tags$span(
+          style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
+          paste0("(", type_label, ")")
+        )
+      ),
+      value = is_selected
     )
-  })
-
+  )
+})
   do.call(tagList, checkbox_list)
 })
   
@@ -660,29 +672,40 @@ output$fileDetails <- renderText({
     selection <- column_selection()
     
     # Create checkboxes in a more efficient way
-    checkbox_list <- lapply(col_names, function(col) {
-      is_numeric <- is.numeric(df[[col]])
-      type_label <- if(is_numeric) "numeric" else "categorical"
-      type_color <- if(is_numeric) "#007bff" else "#28a745"
-      
-      is_selected <- if (!is.null(selection)) selection[col] else TRUE
-      
-      div(
-        style = "margin-bottom: 5px;",
-        checkboxInput(
-          inputId = paste0("col_", make.names(col)),
-          label = tags$span(
-            col,
-            tags$span(
-              style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
-              paste0("(", type_label, ")")
-            )
-          ),
-          value = is_selected
+  checkbox_list <- lapply(col_names, function(col) {
+  value <- df[[col]]
+  is_numeric <- is.numeric(value)
+  is_categorical <- is.factor(value) || is.character(value)
+  is_other <- !(is_numeric || is_categorical)
+
+  if (is_numeric) {
+    type_label <- "numeric"
+    type_color <- "#007bff"
+  } else if (is_categorical) {
+    type_label <- "categorical"
+    type_color <- "#28a745"
+  } else {
+    type_label <- "Other"
+    type_color <- "orange"
+  }
+
+  is_selected <- if (!is.null(selection)) selection[col] else TRUE
+
+  div(
+    style = "margin-bottom: 5px;",
+    checkboxInput(
+      inputId = paste0("col_", make.names(col)),
+      label = tags$span(
+        col,
+        tags$span(
+          style = paste0("color: ", type_color, "; margin-left: 5px; font-size: 80%;"),
+          paste0("(", type_label, ")")
         )
-      )
-    })
-    
+      ),
+      value = is_selected
+    )
+  )
+})
     # Return the list of checkboxes
     do.call(tagList, checkbox_list)
   })
@@ -711,83 +734,88 @@ output$fileDetails <- renderText({
     }
   })
 
-  # Select numeric columns
-  observeEvent(input$select_numeric_cols, {
-    df <- safe_get_display_data()
-    req(df)
-    
-    selection <- column_selection()
-    if (!is.null(selection)) {
-      selection[] <- FALSE
-      for (col in names(df)) {
-        selection[col] <- is.numeric(df[[col]])
-      }
-      column_selection(selection)
+  # Add numeric columns to selection
+observeEvent(input$select_numeric_cols, {
+  df <- safe_get_display_data()
+  req(df)
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    for (col in names(df)) {
+      if (is.numeric(df[[col]])) selection[col] <- TRUE
     }
-  })
+    column_selection(selection)
+  }
+})
 
-  # Select categorical columns
-  observeEvent(input$select_categorical_cols, {
-    df <- safe_get_display_data()
-    req(df)
-    
-    selection <- column_selection()
-    if (!is.null(selection)) {
-      selection[] <- FALSE
-      for (col in names(df)) {
-        selection[col] <- !is.numeric(df[[col]])
-      }
-      column_selection(selection)
+# Add categorical columns to selection
+observeEvent(input$select_categorical_cols, {
+  df <- safe_get_display_data()
+  req(df)
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    for (col in names(df)) {
+      value <- df[[col]]
+      is_categorical <- is.factor(value) || is.character(value)
+      if (is_categorical) selection[col] <- TRUE
     }
-  })
+    column_selection(selection)
+  }
+})
 
-  # Select first N columns
-  observeEvent(input$apply_first_n, {
-    df <- safe_get_display_data()
-    req(df, input$first_n_cols)
-    
-    n <- min(input$first_n_cols, ncol(df))
-    selection <- column_selection()
-    
-    if (!is.null(selection)) {
-      selection[] <- FALSE
-      selection[names(df)[1:n]] <- TRUE
-      column_selection(selection)
+# Add other columns to selection
+observeEvent(input$select_other_cols, {
+  df <- safe_get_display_data()
+  req(df)
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    for (col in names(df)) {
+      value <- df[[col]]
+      is_numeric <- is.numeric(value)
+      is_categorical <- is.factor(value) || is.character(value)
+      is_other <- !(is_numeric || is_categorical)
+      if (is_other) selection[col] <- TRUE
     }
-  })
+    column_selection(selection)
+  }
+})
 
-  # Select last N columns
-  observeEvent(input$apply_last_n, {
-    df <- safe_get_display_data()
-    req(df, input$last_n_cols)
-    
-    n <- min(input$last_n_cols, ncol(df))
-    total_cols <- ncol(df)
-    selection <- column_selection()
-    
-    if (!is.null(selection)) {
-      selection[] <- FALSE
-      selection[names(df)[(total_cols-n+1):total_cols]] <- TRUE
-      column_selection(selection)
-    }
-  })
+# Add first N columns to selection
+observeEvent(input$apply_first_n, {
+  df <- safe_get_display_data()
+  req(df, input$first_n_cols)
+  n <- min(input$first_n_cols, ncol(df))
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    selection[names(df)[1:n]] <- TRUE
+    column_selection(selection)
+  }
+})
 
-  # Apply range selection
-  observeEvent(input$apply_range, {
-    df <- safe_get_display_data()
-    req(df, input$col_range)
-    
-    range_start <- input$col_range[1]
-    range_end <- input$col_range[2]
-    selection <- column_selection()
-    
-    if (!is.null(selection)) {
-      selection[] <- FALSE
-      selection[names(df)[range_start:range_end]] <- TRUE
-      column_selection(selection)
-    }
-  })
+# Add last N columns to selection
+observeEvent(input$apply_last_n, {
+  df <- safe_get_display_data()
+  req(df, input$last_n_cols)
+  n <- min(input$last_n_cols, ncol(df))
+  total_cols <- ncol(df)
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    selection[names(df)[(total_cols-n+1):total_cols]] <- TRUE
+    column_selection(selection)
+  }
+})
 
+# Add range selection to current selection
+observeEvent(input$apply_range, {
+  df <- safe_get_display_data()
+  req(df, input$col_range)
+  range_start <- input$col_range[1]
+  range_end <- input$col_range[2]
+  selection <- column_selection()
+  if (!is.null(selection)) {
+    selection[names(df)[range_start:range_end]] <- TRUE
+    column_selection(selection)
+  }
+})
   # Apply column filter when button is clicked
   observeEvent(input$apply_column_filter, {
     df <- safe_get_display_data()

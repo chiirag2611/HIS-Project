@@ -127,12 +127,18 @@ server <- function(input, output, session) {
     })
   })
   
-  # Modal column selector UI
-  output$modal_column_selector <- renderUI({
-  # For Add Feature, show only dropped features
+output$modal_column_selector <- renderUI({
   if (current_operation() == "add_feature") {
     df <- as.data.frame(dropped_features())
     col_names <- names(df)
+  } else if (current_operation() == "outliers" || current_operation() == "transformation") {
+    # Only show numeric columns for outlier handling and transformation
+    df <- display_data()
+    col_names <- names(df)[sapply(df, is.numeric)]
+  } else if (current_operation() == "encoding") {
+    # Only show categorical columns for encoding
+    df <- display_data()
+    col_names <- names(df)[sapply(df, function(x) is.factor(x) || is.character(x))]
   } else {
     df <- display_data()
     col_names <- names(df)
@@ -574,20 +580,34 @@ observeEvent(input$modal_select_categorical, {
       num_features <- ncol(data)
       
       # Identify categorical and numerical features
-      num_categorical <- sum(sapply(display_data(), function(x) is.factor(x) || is.character(x)))
-      num_numerical <- num_features - num_categorical
-      
+            # Identify categorical, numerical, and other features
+      categorical_cols <- names(data)[sapply(data, function(x) is.factor(x) || is.character(x))]
+      numerical_cols <- names(data)[sapply(data, is.numeric)]
+      other_cols <- setdiff(names(data), c(categorical_cols, numerical_cols))
+
+      num_categorical <- length(categorical_cols)
+      num_numerical <- length(numerical_cols)
+      num_other <- length(other_cols)
+
       # Print the details to the UI
-      output$fileDetails <- renderText({
-        paste(
-          "File Name:", file_name , "\n",
-          "File Format:", file_ext, "\n",
-          "Number of Instances:", num_instances, "\n",
-          "Number of Features:", num_features, "\n",
-          "Categorical Features:", num_categorical, "\n",
-          "Numerical Features:", num_numerical
-        )
-      })
+output$fileDetails <- renderText({
+  # Get up to 2 column names from "Other"
+  other_cols_display <- if (num_other > 0) {
+    paste(head(other_cols, 2), collapse = ", ")
+  } else {
+    "-"
+  }
+  paste(
+    "File Name:", file_name , "\n",
+    "File Format:", file_ext, "\n",
+    "Number of Instances:", num_instances, "\n",
+    "Number of Features:", num_features, "\n",
+    "Categorical Features:", num_categorical, "\n",
+    "Numerical Features:", num_numerical, "\n",
+    "Other Features:", num_other, 
+    if (num_other > 0) paste0(" (e.g., ", other_cols_display, ")") else ""
+  )
+})
     }
   })
   

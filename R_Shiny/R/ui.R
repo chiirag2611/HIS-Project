@@ -906,42 +906,45 @@ ui <- dashboardPage(
 
     # Column Selection Modal - moved inside dashboardBody
     bsModal(
-      id = "columnSelectionModal",
-      title = "Select Columns for Operation",
-      trigger = "column_selection_trigger",
-      size = "large",
-      fluidRow(
-        column(
-          width = 3,
-          h4("Quick Actions"),
-          div(
-            style = "margin-bottom: 15px;",
-            actionButton("modal_select_all", "Select All", class = "btn-sm btn-action"),
-            actionButton("modal_deselect_all", "Deselect All", class = "btn-sm btn-action")
-          ),
-          div(
-            style = "margin-bottom: 15px;",
-            actionButton("modal_select_numeric", "Select Numeric", class = "btn-sm btn-action"),
-            actionButton("modal_select_categorical", "Select Categorical", class = "btn-sm btn-action")
-          )
-        ),
-        column(
-          width = 9,
-          h4("Column Selection"),
-          div(
-            style = "margin-bottom: 15px;",
-            textInput("modal_search_columns", "Search Columns:", placeholder = "Type to search...")
-          ),
-          div(
-            style = "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;",
-            uiOutput("modal_column_selector")
-          )
-        )
+  id = "columnSelectionModal",
+  title = "Select Columns for Operation",
+  trigger = "column_selection_trigger",
+  size = "large",
+  fluidRow(
+    column(
+      width = 3,
+      h4("Quick Actions"),
+      div(
+        style = "margin-bottom: 15px;",
+        actionButton("modal_select_all", "Select All", class = "btn-sm btn-action"),
+        actionButton("modal_deselect_all", "Deselect All", class = "btn-sm btn-action")
       ),
-      footer = tagList(
-        actionButton("modal_cancel", "Cancel", class = "btn-default"),
-        actionButton("modal_confirm", "Confirm Selection", class = "btn-primary")
+      conditionalPanel(
+        condition = "!(input.column_selection_trigger == 'encoding' || input.column_selection_trigger == 'transformation' || input.column_selection_trigger == 'outliers')",
+        div(
+          style = "margin-bottom: 15px;",
+          actionButton("modal_select_numeric", "Select Numeric", class = "btn-sm btn-action"),
+          actionButton("modal_select_categorical", "Select Categorical", class = "btn-sm btn-action")
+        )
+      )
+    ),
+    column(
+      width = 9,
+      h4("Column Selection"),
+      div(
+        style = "margin-bottom: 15px;",
+        textInput("modal_search_columns", "Search Columns:", placeholder = "Type to search...")
+      ),
+      div(
+        style = "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;",
+        uiOutput("modal_column_selector")
       )
     )
+  ),
+  footer = tagList(
+    actionButton("modal_cancel", "Cancel", class = "btn-default"),
+    actionButton("modal_confirm", "Confirm Selection", class = "btn-primary")
   )
+ )
+)
 )

@@ -123,7 +123,21 @@ server <- function(input, output, session) {
       previous_selected_cols(character(0))
       modal_selected_cols(character(0))  # Default to empty
     }
-    
+    # For "cat_to_num", include all categorical columns (original and converted)
+    if (current_operation() == "cat_to_num") {
+      df <- display_data()
+      # Identify columns that are either factor or character (categorical)
+      # Include all columns that are currently categorical (factor or character)
+      col_names <- names(df)[sapply(df, function(x) is.factor(x) || is.character(x))]
+      # Also include columns that were previously numeric but converted to factor (by checking for "original_values" attribute)
+      converted_categorical <- names(df)[sapply(df, function(x) !is.null(attr(x, "original_values")))]
+      # Combine and deduplicate
+      col_names <- unique(c(col_names, converted_categorical))
+      # Also include columns that were previously numeric but converted to factor (by checking for "original_values" attribute)
+      converted_categorical <- names(df)[sapply(df, function(x) !is.null(attr(x, "original_values")))]
+      # Combine and deduplicate
+      col_names <- unique(c(col_names, converted_categorical))
+    }
     # Set modal state to open
     modal_is_open(TRUE)
     

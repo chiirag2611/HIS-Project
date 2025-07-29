@@ -193,4 +193,3 @@ Current Version: 1.0.0
 ## Authors
 
 [Adesh Shirke | Chirag Chawla | Samyak Soni]
-[Msc Students Frankfurt University Of Applied Sciences]
